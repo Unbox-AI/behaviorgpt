@@ -1,0 +1,40 @@
+[project]
+name = "behaviorgpt"
+version = "0.1.0"
+description = "BehaviorGPT by UnboxAI"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "httpx>=0.28.1",
+    "pyarrow>=25.0.1",
+    "pydantic>=2.13.4",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.3,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "ipykernel>=7.3.0",
+    "jupyterlab>=4.6.3",
+    "matplotlib>=3.11.1",
+    "pandas>=3.0.5",
+    "pillow>=12.3.0",
+    "python-dotenv>=1.2.3",
+    "requests>=2.34.2",
+    "ruff>=0.16.2",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+exclude = [
+    "notebooks/*"
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["behaviorgpt"]
