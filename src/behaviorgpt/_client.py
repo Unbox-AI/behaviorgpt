@@ -39,9 +39,9 @@ class UnboxAIClient:
         base_url: str = "https://behaviorgpt-northeurope.api.unboxai.com/v1",
         default_catalog_id: str = "sample_catalog",
     ):
-        self.api_key = api_key or os.environ.get("UNBOXAI_EMBED_API_KEY")
+        self.api_key = api_key or os.environ.get("UNBOXAI_API_KEY")
         if not self.api_key:
-            msg = "API key is missing. Pass it or set UNBOXAI_EMBED_API_KEY."
+            msg = "API key is missing. Pass it or set UNBOXAI_API_KEY."
             raise AuthenticationError(msg)
 
         self.base_url = base_url

@@ -19,7 +19,7 @@ Needs [uv](https://github.com/astral-sh/uv). Clone, install, add your key, regis
 git clone https://github.com/Unbox-AI/behaviorgpt.git
 cd behaviorgpt
 uv sync
-cp .env.example .env   # paste your key as UNBOXAI_EMBED_API_KEY
+cp .env.example .env   # paste your key as UNBOXAI_API_KEY
 uv run ipython kernel install --user --env VIRTUAL_ENV $(pwd)/.venv --name=behaviorgpt-env
 uv run jupyter lab
 ```
@@ -32,7 +32,7 @@ JupyterLab opens in your browser. Open the notebook and pick the `behaviorgpt-en
 pip install behaviorgpt
 ```
 
-The client reads `UNBOXAI_EMBED_API_KEY` from the environment on startup. You can also pass `api_key=` directly to `UnboxAIClient`.
+The client reads `UNBOXAI_API_KEY` from the environment on startup. You can also pass `api_key=` directly to `UnboxAIClient`.
 
 ## Usage
 
