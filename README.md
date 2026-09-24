@@ -36,7 +36,8 @@ The client reads `UNBOXAI_API_KEY` from the environment on startup. You can also
 
 ## Usage
 
-The model can only return products it knows about. To use it on your store, upload your catalog as a parquet file.
+The model can only return products it knows about. There are a number of pre-embedded catalogs to choose from.  
+To use it on your store, upload your catalog as a parquet file.
 
 - The required columns and types are described in [`docs/catalog-format.md`](docs/catalog-format.md).
 - A catalog can hold at most 20 000 products.
