@@ -70,3 +70,6 @@ Thumbs.db
 .ipynb_checkpoints/
 # Local sample data (not version controlled)
 notebooks/*.parquet
+
+# Parquet built from the example CSV by the notebook
+examples/*.parquet

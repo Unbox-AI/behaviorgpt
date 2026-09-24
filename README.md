@@ -40,9 +40,9 @@ The model can only return products it knows about. To use it on your store, uplo
 
 - The required columns and types are described in [`docs/catalog-format.md`](docs/catalog-format.md).
 - A catalog can hold at most 20 000 products.
-- [`examples/amazon_example_100.csv`](examples/amazon_example_100.csv) shows what a correctly shaped catalog looks like.
+- [`examples/sample_catalog.csv`](examples/sample_catalog.csv) is an example only, showing what each column should contain. Your own file will look different depending on your catalog, and it has to be converted to the parquet structure described in the format doc before upload.
 
-If mapping your data to the format is hard, open a coding agent in this directory, point it at `docs/catalog-format.md`, and ask it to convert your file into a matching parquet at the repo root.
+If mapping your data to the format is hard, open a coding agent in this directory, point it at `docs/catalog-format.md`, and ask it to convert your file into a matching parquet. The doc contains the step-by-step recipe.
 
 ## Try it in the demo
 
