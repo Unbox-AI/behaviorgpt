@@ -6,7 +6,7 @@ This repository holds the Python client for the UnboxAI API and a notebook that 
 
 ## Requirements
 
-- An UnboxAI API key. Sign up at [unboxai.com/behaviorgpt](https://unboxai.com/behaviorgpt); the key arrives by email.
+- An UnboxAI API key. Create & copy the key at [unboxai.com/behaviorgpt](https://unboxai.com/behaviorgpt); the key also arrives by email.
 - Python 3.11 or newer.
 
 ## The notebook
