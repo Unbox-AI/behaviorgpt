@@ -1,62 +1,50 @@
 # BehaviorGPT
 
-**BehaviorGPT** is our flagship Large Behavioral Model (LBM) which achieves State of The Art on numeorus benchmarks.
+**BehaviorGPT** is UnboxAI's Large Behavioral Model. It is trained on long sequences of things people actually did (viewed this, added that, bought the other) and predicts what comes next. Search, recommendations and personalization are the same call with different histories.
 
-This repository contains the Python core client for interacting with our API as well as some example Notebooks for following along and experimenting with our LBM.
+This repository holds the Python client for the UnboxAI API and a notebook that walks through the model step by step.
 
-It provides access to the UnboxAI REST API from any Python 3.11+ application. The library includes type definitions for all request params and response fields, and offers both synchronous and asynchronous clients powered by `httpx`.
+## Requirements
 
-## Installation
+- An UnboxAI API key. Create & copy the key at [unboxai.com/behaviorgpt](https://unboxai.com/behaviorgpt); the key also arrives by email.
+- Python 3.11 or newer.
 
-Install from PyPI:
+## The notebook
+
+[`notebooks/showcase.ipynb`](notebooks/showcase.ipynb) covers the model in eight steps: setup, a first query, one call for many features, how context changes the answer, then embedding your own catalog, inspecting the embedding space, querying it, and trying it in the demo.
+
+Needs [uv](https://github.com/astral-sh/uv). Clone, install, add your key, register the kernel, start JupyterLab:
+
+```sh
+git clone https://github.com/Unbox-AI/behaviorgpt.git
+cd behaviorgpt
+uv sync
+cp .env.example .env   # paste your key as UNBOXAI_API_KEY
+uv run ipython kernel install --user --env VIRTUAL_ENV $(pwd)/.venv --name=behaviorgpt-env
+uv run jupyter lab
+```
+
+JupyterLab opens in your browser. Open the notebook and pick the `behaviorgpt-env` kernel.
+
+## Use the client in your own code
 
 ```sh
 pip install behaviorgpt
 ```
 
-Or,
-
-Clone this repo:
-
-```sh
-git clone https://github.com/Unbox-AI/behaviorgpt.git
-```
-
-And then, install [uv](https://github.com/astral-sh/uv) and sync the dependencies:
-
-```sh
-uv sync
-source .venv/bin/activate
-```
+The client reads `UNBOXAI_API_KEY` from the environment on startup. You can also pass `api_key=` directly to `UnboxAIClient`.
 
 ## Usage
 
-You will need an UnboxAI API Key to use this repository, get yours at: [UnboxAI](https://behaviorgpt-staging.unboxai.com/).
+The model can only return products it knows about. There are a number of pre-embedded catalogs to choose from.  
+To use it on your store, upload your catalog as a parquet file.
 
-The maximum amount of products that can be present in your catalog is currently: 20 000 
+- The required columns and types are described in [`docs/catalog-format.md`](docs/catalog-format.md).
+- A catalog can hold at most 20 000 products.
+- [`examples/sample_catalog.csv`](examples/sample_catalog.csv) is an example only, showing what each column should contain. Your own file will look different depending on your catalog, and it has to be converted to the parquet structure described in the format doc before upload.
 
-If you find mapping the data of your product catalog difficult. Do the following: 
+If mapping your data to the format is hard, open a coding agent in this directory, point it at `docs/catalog-format.md`, and ask it to convert your file into a matching parquet. The doc contains the step-by-step recipe.
 
-- Invoke your coding agent in this dir.
-- Tell the agent to read the catalog-format.md file in /docs.
-- Give instructions to structure your catalog, regardless of file, into what the .md file suggests, to the best of its abaility.
-- Add the final parquet file to the repo root.
+## Try it in the demo
 
-### Examples
-
-The `notebooks/*` dir holds a plethora of examples on how you can use **BehaviorGPT** with this UnboxAI SDK:
-
-- How to embed your own catalog, sync it with the LBM and visualize the embedding space;
-- How to run personalized search and recommendation on the selected assortment;
-
-Set the `uv` .venv as a valid Jupyter kernel:
-
-```sh
-uv run ipython kernel install --user --env VIRTUAL_ENV $(pwd)/.venv --name=behaviorgpt-env
-```
-
-To launch the Jupyter environment:
-
-```sh
-uv run jupyter lab
-```
+Once your catalog is embedded, open [behaviorgpt.unboxai.com](https://behaviorgpt.unboxai.com/), select the **BehaviorGPT V4.0-13B** model, choose **Bring your own catalog** and enter your API key. Product images must be publicly reachable for the demo to display them.
