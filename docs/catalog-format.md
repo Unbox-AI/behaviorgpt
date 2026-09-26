@@ -44,6 +44,37 @@ Listed in order of impact.
 2. `categories` and `brand`. They join the title in the embedding text.
 3. `sales_since`, `timestamp`, `frequency`. These drive popularity and recency. Without them all products rank as equally popular.
 
+## Hosting your catalog
+
+The parquet itself is uploaded, but images are fetched from their `image_url` by UnboxAI's servers. Every URL must therefore be public, `https://`, and reachable from a server, not only from a browser. Some sites put images behind bot protection (Cloudflare, for example) that serves browsers but blocks servers; the job then fails when all image fetches come back 403. Test a few URLs with `curl` from a cloud machine if in doubt.
+
+If your images are not reachable that way, re-host copies on any public host: an S3, R2, GCS or Azure bucket with public read, a GitHub repo, or a Hugging Face dataset. Only re-host images you have the rights to publish.
+
+To use Hugging Face with your own account:
+
+1. Create a write token at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) and add it to `.env` as `HF_TOKEN=...`. Never commit it.
+2. Upload your image folder as a public dataset:
+
+   ```python
+   from dotenv import load_dotenv
+   from huggingface_hub import HfApi
+
+   load_dotenv()
+   api = HfApi()
+   api.create_repo("you/my-catalog-images", repo_type="dataset", exist_ok=True)
+   api.upload_folder(
+       repo_id="you/my-catalog-images",
+       repo_type="dataset",
+       folder_path="images",
+       path_in_repo="images",
+   )
+   ```
+
+   A folder on Hugging Face holds at most 10,000 files, so split larger sets into subfolders.
+3. Point `image_url` at `https://huggingface.co/datasets/you/my-catalog-images/resolve/main/images/<file>`.
+
+Embed a small slice first (a few hundred rows) to confirm the images are fetched before uploading the full catalog.
+
 ## Example catalog
 
 `examples/sample_catalog.csv` has 100 rows with the correct column names and realistic values. It exists to be read: open it to see what each column should contain. It cannot be uploaded as-is, because CSV carries no types. Read naively, three places come out wrong:
