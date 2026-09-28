@@ -11,6 +11,8 @@ job = client.embed("my_catalog.parquet", wait=True, timeout=1800.0)
 - Only parquet files are accepted.
 - All 15 columns below must be present. The server checks column names only. A missing column fails the job before any work starts. A column that exists but is entirely null passes.
 - The client checks column types before upload, since the tokenizer depends on them. A wrong type fails the job before any work starts.
+- If none of the first 500 fetched images can be used, the job fails instead of embedding text only. This usually means the image host blocks automated requests, for example a site behind bot protection. The error names the host, e.g. `Embed job … failed: no usable image in 500 of 18974 urls fetched: {'unreachable (http 403)': 500}; failing hosts: www.example.com (500)`. Serve the images from a host that allows plain HTTPS fetches.
+- A failed job raises `UnboxAIError`, whose message carries the reason when the server gives one. `client.job_status(job_id).error` holds the same text.
 
 ## Columns
 
@@ -20,7 +22,7 @@ job = client.embed("my_catalog.parquet", wait=True, timeout=1800.0)
 | `name` | string | no | Product title. Primary text input to the embedding. |
 | `brand` | string | yes | Appended to the embedding text. |
 | `categories` | string | yes | Comma-separated path, e.g. `Clothing, Trousers`. Appended to the embedding text and split into keywords. |
-| `image_url` | string | yes | Full `https://` URL. Fetched and encoded into the embedding. Null or unreachable means text-only embedding for that row. |
+| `image_url` | string | yes | Full `https://` URL, fetchable without a login or browser. Fetched and encoded into the embedding. Null or unreachable means text-only embedding for that row, but if none of the first 500 fetched images is usable the job fails (see below). |
 | `event_type` | string | no | Set every row to `product`. |
 | `group` | string | no | Set every row to `product`. |
 | `sales_since` | list of int64 | yes | 12 integers: sales in the trailing 30, 60, ..., 330 days, then the all-time total. Popularity signal. Null is treated as all zeros. |

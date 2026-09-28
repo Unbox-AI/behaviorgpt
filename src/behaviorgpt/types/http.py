@@ -106,12 +106,19 @@ class JobStatus(BaseModel):
     phase: Optional[str] = None
     done: Optional[int] = None
     total: Optional[int] = None
+    # why the job failed, e.g. "catalog parquet is empty"; only set when
+    # status is "failed", and not for every failure
+    error: Optional[str] = None
 
     def describe(self) -> str:
-        """One line for progress output: 'embed fetching 5000/20000'."""
+        """One line for progress output: 'embed fetching 5000/20000', or
+        'embed failed: <reason>'."""
         if self.stage is None:
             return self.status
         step = self.phase or self.stage_state or ""
         if self.done is not None and self.total is not None:
             step = f"{step} {self.done}/{self.total}"
-        return f"{self.stage} {step}".strip()
+        line = f"{self.stage} {step}".strip()
+        if self.error:
+            line = f"{line}: {self.error}"
+        return line
