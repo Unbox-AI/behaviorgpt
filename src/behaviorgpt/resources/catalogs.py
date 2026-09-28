@@ -183,7 +183,11 @@ class Catalogs:
                 return status
 
             if state == FAILED_STATUS:
-                raise UnboxAIError(f"Embed job {job_id} failed")
+                reason = f": {status.error}" if status.error else ""
+                raise UnboxAIError(
+                    f"Embed job {job_id} failed{reason}",
+                    response=status.model_dump(),
+                )
 
             if time.monotonic() + interval > deadline:
                 raise UnboxAIError(
