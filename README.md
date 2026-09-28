@@ -43,7 +43,7 @@ To use it on your store, upload your catalog as a parquet file.
 - A catalog can hold at most 20 000 products.
 - [`examples/sample_catalog.csv`](examples/sample_catalog.csv) is an example only, showing what each column should contain. Your own file will look different depending on your catalog, and it has to be converted to the parquet structure described in the format doc before upload.
 
-If mapping your data to the format is hard, open a coding agent in this directory, point it at `docs/catalog-format.md`, and ask it to convert your file into a matching parquet. The doc contains the step-by-step recipe.
+If mapping your data to the format is hard, open a coding agent in this directory and ask it to embed your catalog. The repo ships a skill at [`.claude/skills/embed-catalog/SKILL.md`](.claude/skills/embed-catalog/SKILL.md) that walks the agent through mapping your columns, building and validating the parquet, checking image URLs, and uploading. Claude Code picks it up automatically; for other agents, point them at that file.
 
 ## Try it in the demo
 
