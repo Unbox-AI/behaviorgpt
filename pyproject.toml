@@ -21,6 +21,7 @@ dev = [
     "matplotlib>=3.11.1",
     "pandas>=3.0.5",
     "pillow>=12.3.0",
+    "pytest>=9.1.1",
     "python-dotenv>=1.2.3",
     "requests>=2.34.2",
     "ruff>=0.16.2",
@@ -38,3 +39,7 @@ exclude = [
 
 [tool.ruff.lint.isort]
 known-first-party = ["behaviorgpt"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"

@@ -21,6 +21,9 @@ READY_STATUS = "ready"
 FAILED_STATUS = "failed"
 QUEUED_STATUS = "queued"
 
+# A status read that fails with one of these says nothing about the job.
+RETRYABLE_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
+
 # Arrow type per column, see docs/catalog-format.md. The server checks column
 # names only; a wrong type fails or degrades the job later, so check it here.
 CATALOG_SCHEMA = {
@@ -47,7 +50,10 @@ def check_catalog_schema(path: Path) -> None:
 
     An entirely null column has Arrow type `null` and is accepted.
     """
-    schema = pq.read_schema(path)
+    try:
+        schema = pq.read_schema(path)
+    except (pa.ArrowException, OSError) as exc:
+        raise UnboxAIError(f"{path} is not a readable parquet file: {exc}") from exc
     problems = []
     for column, expected in CATALOG_SCHEMA.items():
         if column not in schema.names:
@@ -140,6 +146,7 @@ class Catalogs:
         timeout: float = 600.0,
         on_progress: Optional[Callable[[JobStatus], None]] = None,
         startup_grace: float = 120.0,
+        failed_grace: float = 180.0,
     ) -> JobStatus:
         """Block until the job succeeds; raise on failure or timeout.
 
@@ -153,6 +160,13 @@ class Catalogs:
         GPU worker is busy). Within `startup_grace` seconds that 404 is
         reported as status `queued` and polling continues; after it, the 404
         is raised as it stands.
+
+        A job that fails for good says why in `error`. A `failed` status
+        without an error can be temporary, while the job is retried, so it is
+        only final once it has lasted `failed_grace` seconds.
+
+        A status read that fails with a 429, a 5xx or a network error says
+        nothing about the job, so polling continues until `timeout`.
         """
         if on_progress is None:
             on_progress = ProgressPrinter()
@@ -160,39 +174,56 @@ class Catalogs:
         started = time.monotonic()
         deadline = started + timeout
         seen = False
+        last_state = QUEUED_STATUS
+        failed_since: Optional[float] = None
+        read_error: Optional[Exception] = None
 
         while True:
+            status: Optional[JobStatus] = None
             try:
                 status = self.get_job_status(job_id)
+            except httpx.TransportError as exc:
+                read_error = exc
             except UnboxAIError as exc:
                 not_started = (
                     exc.status_code == 404
                     and not seen
                     and time.monotonic() - started < startup_grace
                 )
-                if not not_started:
+                if not_started:
+                    status = JobStatus(job_id=job_id, status=QUEUED_STATUS)
+                elif exc.status_code in RETRYABLE_STATUS_CODES:
+                    read_error = exc
+                else:
                     raise
-                status = JobStatus(job_id=job_id, status=QUEUED_STATUS)
             else:
                 seen = True
-            state = status.status.lower()
+                read_error = None
 
-            on_progress(status)
+            if status is not None:
+                on_progress(status)
+                last_state = status.status.lower()
 
-            if state == READY_STATUS:
-                return status
+                if last_state == READY_STATUS:
+                    return status
 
-            if state == FAILED_STATUS:
-                reason = f": {status.error}" if status.error else ""
-                raise UnboxAIError(
-                    f"Embed job {job_id} failed{reason}",
-                    response=status.model_dump(),
-                )
+                if last_state == FAILED_STATUS:
+                    now = time.monotonic()
+                    failed_since = now if failed_since is None else failed_since
+                    if status.error or now - failed_since >= failed_grace:
+                        reason = f": {status.error}" if status.error else ""
+                        raise UnboxAIError(
+                            f"Embed job {job_id} failed{reason}",
+                            response=status.model_dump(),
+                        )
+                else:
+                    failed_since = None
 
             if time.monotonic() + interval > deadline:
-                raise UnboxAIError(
-                    f"Embed job {job_id} still '{state}' after {timeout:g}s"
-                )
+                message = f"Embed job {job_id} still '{last_state}' after {timeout:g}s"
+                if read_error:
+                    message += f"; last status read failed: {read_error}"
+                raise UnboxAIError(message)
 
             time.sleep(interval)
 

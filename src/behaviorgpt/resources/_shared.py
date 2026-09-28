@@ -14,9 +14,15 @@ def handle_response(response: httpx.Response):
             return None
         return response.json()
 
+    # the API answers {"detail": ...}; a proxy in front of it may answer plain
+    # text or JSON of any shape
     try:
-        error_data = response.json().get("detail", response.text)
+        body = response.json()
     except ValueError:
+        body = None
+    if isinstance(body, dict) and "detail" in body:
+        error_data = body["detail"]
+    else:
         error_data = response.text or "Unknown Error"
 
     if response.status_code == 401:

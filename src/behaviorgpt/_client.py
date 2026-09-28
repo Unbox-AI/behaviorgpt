@@ -28,6 +28,10 @@ from behaviorgpt.types import (
     UserHistoryInput,
 )
 
+# An embed upload streams the whole parquet, and the API answers only once the
+# file is stored and queued: httpx's 5 s default is too short for both.
+DEFAULT_HTTP_TIMEOUT = httpx.Timeout(120.0, connect=10.0, write=300.0)
+
 
 class UnboxAIClient:
     def __init__(
@@ -38,6 +42,7 @@ class UnboxAIClient:
         api_key: Optional[str] = None,
         base_url: str = "https://behaviorgpt-northeurope.api.unboxai.com/v1",
         default_catalog_id: str = "sample_catalog",
+        http_timeout: float | httpx.Timeout = DEFAULT_HTTP_TIMEOUT,
     ):
         self.api_key = api_key or os.environ.get("UNBOXAI_API_KEY")
         if not self.api_key:
@@ -48,7 +53,9 @@ class UnboxAIClient:
         self.default_catalog_id = default_catalog_id
 
         headers = {"x-api-key": self.api_key}
-        self._http_client = httpx.Client(base_url=self.base_url, headers=headers)
+        self._http_client = httpx.Client(
+            base_url=self.base_url, headers=headers, timeout=http_timeout
+        )
 
         self.domains = Domains(market=market)
         self.timezone = timezone

@@ -1,7 +1,9 @@
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
-import pandas as pd
 from pydantic import BaseModel, Field, model_validator
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 from behaviorgpt.types.domains import Domains
 from behaviorgpt.types.events import SessionEvent
@@ -72,7 +74,15 @@ class UnboxAIResponse(BaseModel):
 
         return sum(prices) / len(prices) if prices else None
 
-    def to_pandas(self) -> pd.DataFrame:
+    def to_pandas(self) -> "pd.DataFrame":
+        # pandas is optional: only this method needs it
+        try:
+            import pandas as pd
+        except ImportError:
+            raise ImportError(
+                "to_pandas() needs pandas; install it with `pip install pandas`"
+            ) from None
+
         items_data = []
         for item in self.products.items:
             flat_item = {"id": item.id, "score": item.score, **item.data}
