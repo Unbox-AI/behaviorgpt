@@ -73,3 +73,6 @@ notebooks/*.parquet
 
 # Parquet built from the example CSV by the notebook
 examples/*.parquet
+
+# Personal Claude Code settings
+.claude/settings.local.json
