@@ -1,7 +1,8 @@
 import os
 import random
+import warnings
 from collections import defaultdict
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable, Optional, Sequence, cast
 from uuid import uuid4
@@ -41,7 +42,7 @@ class UnboxAIClient:
         timezone: str = "UTC",
         api_key: Optional[str] = None,
         base_url: str = "https://behaviorgpt-northeurope.api.unboxai.com/v1",
-        default_catalog_id: str = "sample_catalog",
+        default_catalog_id: str = "retail_catalog",
         http_timeout: float | httpx.Timeout = DEFAULT_HTTP_TIMEOUT,
     ):
         self.api_key = api_key or os.environ.get("UNBOXAI_API_KEY")
@@ -134,9 +135,9 @@ class UnboxAIClient:
     def job_status(self, job_id: str) -> JobStatus:
         return self.catalogs.get_job_status(job_id)
 
-    def similar_products(
+    def similar_items(
         self,
-        product_id: str,
+        item_id: str,
         limit: int = 10,
         offset: int = 0,
         *,
@@ -145,25 +146,41 @@ class UnboxAIClient:
         active_catalog: str = catalog_id or self.default_catalog_id
         request_headers = {"x-catalog-id": active_catalog}
 
-        return self.catalogs.get_similar_products(
-            product_id,
+        return self.catalogs.get_similar_items(
+            item_id,
             catalog_id=active_catalog,
             limit=limit,
             offset=offset,
             headers=request_headers,
         )
 
-    def random_product(
-        self, catalog_id: Optional[str] = None, window: int = 100
-    ) -> Item:
-        """One product from the embedded catalog, highly likely
-        you have no product_id at hand.
+    def similar_products(
+        self, product_id: str, *args: Any, **kwargs: Any
+    ) -> UnboxAIResponse:
+        warnings.warn(
+            "`similar_products` is deprecated, use `similar_items`",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.similar_items(product_id, *args, **kwargs)
+
+    def random_item(self, catalog_id: Optional[str] = None, window: int = 100) -> Item:
+        """One item from the embedded catalog, handy when
+        you have no item id at hand.
         """
         top = self.complete(history=[], catalog_id=catalog_id, limit=window)
-        if not top.products.items:
+        if not top.items:
             active = catalog_id or self.default_catalog_id
-            raise ValueError(f"catalog {active!r} returned no products")
-        return random.choice(top.products.items)
+            raise ValueError(f"catalog {active!r} returned no items")
+        return random.choice(top.items)
+
+    def random_product(self, *args: Any, **kwargs: Any) -> Item:
+        warnings.warn(
+            "`random_product` is deprecated, use `random_item`",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.random_item(*args, **kwargs)
 
     def __from_sequence(
         self, catalog_id: str, context: UserHistoryInput
@@ -180,19 +197,17 @@ class UnboxAIClient:
             cart_state: dict[str, int] = defaultdict(int)
             current_cart_id = str(uuid4())
 
-            from datetime import UTC, datetime, timedelta
-
             # Base time for the start of the sequence
             base_time = datetime.now(tz=UTC)
 
             for i, ev in enumerate(session_events):
                 if isinstance(ev, AddToCart):
-                    cart_state[ev.product] += 1
+                    cart_state[ev.item] += 1
                 elif isinstance(ev, Order):
                     if not getattr(ev, "items", None):
                         ev.cart_id = current_cart_id
                         ev.items = [
-                            CartItem(prod, qty) for prod, qty in cart_state.items()
+                            CartItem(item, qty) for item, qty in cart_state.items()
                         ]
                     cart_state.clear()
                     current_cart_id = str(uuid4())

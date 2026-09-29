@@ -65,7 +65,7 @@ def test_import_after_clean_install(clean_install):
 def test_to_pandas_explains_a_missing_pandas(clean_install):
     code = (
         "from behaviorgpt.types import UnboxAIResponse\n"
-        "r = UnboxAIResponse(products={'items': [], 'offset': 0, 'limit': 10})\n"
+        "r = UnboxAIResponse(items=[], offset=0, limit=10)\n"
         "try:\n    r.to_pandas()\n"
         "except ImportError as e:\n    print(e)\n"
     )

@@ -1,3 +1,7 @@
+import warnings
+from typing import Any
+
+from behaviorgpt.types import http
 from behaviorgpt.types.domains import Domains
 from behaviorgpt.types.events import (
     AddToCart,
@@ -13,8 +17,9 @@ from behaviorgpt.types.events import (
 from behaviorgpt.types.http import (
     EmbedJobDetails,
     Item,
+    ItemsPage,
     JobStatus,
-    SimilarProductsRequest,
+    SimilarItemsRequest,
     UnboxAIRequest,
     UnboxAIResponse,
 )
@@ -31,9 +36,20 @@ __all__ = [
     "UnboxAIRequest",
     "Domains",
     "UserHistoryInput",
-    "SimilarProductsRequest",
+    "SimilarItemsRequest",
     "EmbedJobDetails",
     "JobStatus",
     "Item",
+    "ItemsPage",
     "CartItem",
 ]
+
+
+def __getattr__(name: str) -> Any:
+    if name in http.DEPRECATED_NAMES:
+        new = http.DEPRECATED_NAMES[name]
+        warnings.warn(
+            f"`{name}` is deprecated, use `{new}`", DeprecationWarning, stacklevel=2
+        )
+        return getattr(http, new)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

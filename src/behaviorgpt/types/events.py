@@ -1,23 +1,51 @@
+import warnings
 from datetime import UTC, datetime
 from typing import List, Literal, Optional, Sequence, Tuple, Union
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from behaviorgpt.types.domains import Domains
 
 
-class CartItem(BaseModel):
-    product: str
+class _ItemEvent(BaseModel):
+    # the API calls the item "product"
+    model_config = ConfigDict(serialize_by_alias=True)
+
+    item: str = Field(
+        validation_alias=AliasChoices("item", "product"),
+        serialization_alias="product",
+    )
+
+    def __init__(self, item: Optional[str] = None, **data):
+        if "product" in data:
+            warnings.warn(
+                "`product=` is deprecated, use `item=`",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            product = data.pop("product")
+            item = product if item is None else item
+        if item is not None:
+            data["item"] = item
+        super().__init__(**data)
+
+    @property
+    def product(self) -> str:
+        warnings.warn(
+            "`.product` is deprecated, use `.item`", DeprecationWarning, stacklevel=2
+        )
+        return self.item
+
+
+class CartItem(_ItemEvent):
     quantity: int
 
     def __init__(
-        self, product: Optional[str] = None, quantity: Optional[int] = None, **data
+        self, item: Optional[str] = None, quantity: Optional[int] = None, **data
     ):
-        if product is not None:
-            data["product"] = product
         if quantity is not None:
             data["quantity"] = quantity
-        super().__init__(**data)
+        super().__init__(item, **data)
 
 
 class Search(BaseModel):
@@ -30,34 +58,16 @@ class Search(BaseModel):
         super().__init__(**data)
 
 
-class View(BaseModel):
+class View(_ItemEvent):
     type: Literal["viewItem"] = "viewItem"
-    product: str
-
-    def __init__(self, product: Optional[str] = None, **data):
-        if product is not None:
-            data["product"] = product
-        super().__init__(**data)
 
 
-class AddToCart(BaseModel):
+class AddToCart(_ItemEvent):
     type: Literal["addToCart"] = "addToCart"
-    product: str
-
-    def __init__(self, product: Optional[str] = None, **data):
-        if product is not None:
-            data["product"] = product
-        super().__init__(**data)
 
 
-class RemoveFromCart(BaseModel):
+class RemoveFromCart(_ItemEvent):
     type: Literal["removeFromCart"] = "removeFromCart"
-    product: str
-
-    def __init__(self, product: Optional[str] = None, **data):
-        if product is not None:
-            data["product"] = product
-        super().__init__(**data)
 
 
 class Order(BaseModel):
@@ -77,14 +87,12 @@ class Order(BaseModel):
 
         if items is not None:
             parsed_items = []
-            for item in items:
-                if isinstance(item, tuple):
-                    product_id, quantity = item
-                    parsed_items.append(
-                        CartItem(product_id=product_id, quantity=quantity)
-                    )
+            for entry in items:
+                if isinstance(entry, tuple):
+                    item_id, quantity = entry
+                    parsed_items.append(CartItem(item_id, quantity))
                 else:
-                    parsed_items.append(item)
+                    parsed_items.append(entry)
 
             data["items"] = parsed_items
 

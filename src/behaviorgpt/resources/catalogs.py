@@ -1,6 +1,7 @@
 import time
+import warnings
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 import httpx
 import pyarrow as pa
@@ -11,7 +12,7 @@ from behaviorgpt.resources._shared import handle_response
 from behaviorgpt.types import (
     EmbedJobDetails,
     JobStatus,
-    SimilarProductsRequest,
+    SimilarItemsRequest,
     UnboxAIResponse,
 )
 
@@ -86,7 +87,7 @@ class ProgressPrinter:
 
 
 class Catalogs:
-    """Upload a catalog parquet and embed it into the model's product space."""
+    """Upload a catalog parquet and embed it into the model's item space."""
 
     def __init__(self, http_client: httpx.Client):
         self._client = http_client
@@ -227,9 +228,9 @@ class Catalogs:
 
             time.sleep(interval)
 
-    def get_similar_products(
+    def get_similar_items(
         self,
-        product_id: str,
+        item_id: str,
         limit: int = 10,
         offset: int = 0,
         *,
@@ -237,8 +238,8 @@ class Catalogs:
         filters: Optional[dict] = None,
         headers: Optional[dict] = None,
     ) -> UnboxAIResponse:
-        req = SimilarProductsRequest(
-            product_id=product_id,
+        req = SimilarItemsRequest(
+            item_id=item_id,
             store_id=catalog_id,
             limit=limit,
             offset=offset,
@@ -255,10 +256,21 @@ class Catalogs:
 
         return UnboxAIResponse(**data)
 
+    def get_similar_products(
+        self, product_id: str, *args: Any, **kwargs: Any
+    ) -> UnboxAIResponse:
+        warnings.warn(
+            "`get_similar_products` is deprecated, use `get_similar_items`",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.get_similar_items(product_id, *args, **kwargs)
+
     def get_umap(self, *, catalog_id: str):
         response = self._client.get(
             f"/{catalog_id}/umap",
         )
 
-        response.raise_for_status()
+        if response.is_error:
+            handle_response(response)
         return response.text
