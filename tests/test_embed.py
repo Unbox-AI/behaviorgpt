@@ -215,3 +215,56 @@ def test_client_timeout_is_configurable():
 
     client = UnboxAIClient(market="us", api_key="ubx_test", http_timeout=7.0)
     assert client._http_client.timeout.write == 7.0
+
+
+REJECTED = {
+    "count": 5,
+    "total": 20000,
+    "products": [
+        {"id": f"sku-{i}", "reason": "failed to parse field [stock]"} for i in range(5)
+    ],
+}
+
+
+def test_a_ready_job_with_rejected_items_still_succeeds():
+    """The catalog is live without them: waiting returns, it never raises.
+    The API sends products_rejected; the SDK reads it as items_rejected."""
+    result, _, _ = wait(
+        [
+            status("embedding"),
+            status(
+                "ready", stage="ingest", stage_state="done", products_rejected=REJECTED
+            ),
+        ]
+    )
+    assert result.status == "ready"
+    assert result.error is None
+    rejected = result.items_rejected
+    assert (rejected.count, rejected.total) == (5, 20000)
+    assert rejected.items[0].id == "sku-0"
+    assert rejected.items[0].reason == "failed to parse field [stock]"
+
+
+def test_progress_line_names_the_rejected_items(capsys):
+    from behaviorgpt.resources.catalogs import ProgressPrinter
+    from behaviorgpt.types import JobStatus
+
+    ready = JobStatus(
+        **status(
+            "ready",
+            stage="ingest",
+            stage_state="done",
+            phase="done",
+            products_rejected=REJECTED,
+        )
+    )
+    ProgressPrinter()(ready)
+    line = capsys.readouterr().out.strip()
+    assert line == (
+        "ingest done (5 of 20000 items rejected: 'sku-0', 'sku-1', 'sku-2' and 2 more)"
+    )
+
+
+def test_a_server_without_the_field_reads_as_nothing_rejected():
+    result, _, _ = wait([status("ready")])
+    assert result.items_rejected is None

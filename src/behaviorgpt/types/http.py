@@ -137,6 +137,30 @@ class SimilarItemsRequest(BaseModel):
     filters: dict = Field(default_factory=dict)
 
 
+class RejectedItem(BaseModel):
+    id: str
+    # why the index refused it, e.g. "failed to parse field [stock] of type
+    # [long]"
+    reason: str
+
+
+class ItemsRejected(BaseModel):
+    """Items left out of a catalog that is otherwise ready: the index refused
+    them for their content. Fix those rows and re-upload to add them."""
+
+    count: int
+    total: int
+    # the first of them (at most 100); "products" on the wire
+    items: List[RejectedItem] = Field(
+        default_factory=list, validation_alias=AliasChoices("items", "products")
+    )
+
+    def describe(self) -> str:
+        ids = ", ".join(repr(i.id) for i in self.items[:3])
+        more = f" and {self.count - 3} more" if self.count > 3 else ""
+        return f"{self.count} of {self.total} items rejected: {ids}{more}"
+
+
 class JobStatus(BaseModel):
     job_id: str
     status: str
@@ -148,10 +172,17 @@ class JobStatus(BaseModel):
     # why the job failed, e.g. "catalog parquet is empty"; only set when
     # status is "failed", and not for every failure
     error: Optional[str] = None
+    # items left out of a ready catalog; the job still succeeded.
+    # "products_rejected" on the wire
+    items_rejected: Optional[ItemsRejected] = Field(
+        default=None,
+        validation_alias=AliasChoices("items_rejected", "products_rejected"),
+    )
 
     def describe(self) -> str:
-        """One line for progress output: 'embed fetching 5000/20000', or
-        'embed failed: <reason>'."""
+        """One line for progress output: 'embed fetching 5000/20000',
+        'embed failed: <reason>', or 'ingest done (2 of 20000 items
+        rejected: ...)'."""
         if self.stage is None:
             return self.status
         step = self.phase or self.stage_state or ""
@@ -160,6 +191,8 @@ class JobStatus(BaseModel):
         line = f"{self.stage} {step}".strip()
         if self.error:
             line = f"{line}: {self.error}"
+        if self.items_rejected:
+            line = f"{line} ({self.items_rejected.describe()})"
         return line
 
 
