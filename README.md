@@ -7,11 +7,11 @@ Two apps built on this SDK, one on a store's catalog and one on a museum's:
 <table>
   <tr>
     <td width="50%"><a href="https://behaviorgpt.unboxai.com/"><img src="docs/images/storefront.png" alt="The storefront demo: after a search for golf clubs, a search for gloves returns golf gloves"></a></td>
-    <td width="50%"><a href="https://github.com/Unbox-AI/aic-artworks"><img src="docs/images/curate-my-wall.png" alt="Curate my wall: an art recommender over 19,000 artworks from the Art Institute of Chicago"></a></td>
+    <td width="50%"><a href="https://github.com/Unbox-AI/aic-artworks"><img src="docs/images/curate-my-wall.png" alt="Curate my wall: three Hokusai prints hung on the wall, and the fashion they lead to: printed scarves, a tiger-print tee and a kimono"></a></td>
   </tr>
   <tr>
     <td><b>Storefront</b> (<a href="https://behaviorgpt.unboxai.com/">live demo</a>). "gloves" after "golf clubs" returns golf gloves; the panel shows the history the model read.</td>
-    <td><b>Curate my wall</b> (<a href="https://github.com/Unbox-AI/aic-artworks">source</a>). An art recommender over 19 000 artworks, built on this SDK.</td>
+    <td><b>Curate my wall</b> (<a href="https://aic-artworks.streamlit.app/">live app</a>, <a href="https://github.com/Unbox-AI/aic-artworks">source</a>). Hang three Hokusai prints and the same clicks pick your clothes: scarves and kimonos from an art history alone.</td>
   </tr>
 </table>
 
@@ -96,4 +96,5 @@ A history is a list of `Search`, `View`, `AddToCart`, `RemoveFromCart` and `Orde
 ## Demo and examples
 
 - [behaviorgpt.unboxai.com](https://behaviorgpt.unboxai.com/): a storefront, with recommendations, personalized search and a cart driven by the shopper's clicks. To try it on your catalog once it is embedded, select the **BehaviorGPT V4.0-12.5B** model, choose **Bring your own catalog** and enter your API key. Images must be publicly reachable for the demo to display them.
-- [Curate my wall](https://github.com/Unbox-AI/aic-artworks): an art recommender over 19 000 public-domain artworks from the Art Institute of Chicago. It shows the whole path for a catalog that isn't products: turning an open dataset into a catalog, embedding it, and driving recommendations, search, similar items and the embedding map from a visitor's clicks.
+- [Curate my wall](https://github.com/Unbox-AI/aic-artworks) ([live app](https://aic-artworks.streamlit.app/)): an art recommender over 19 000 public-domain artworks from the Art Institute of Chicago. It shows the whole path for a catalog that isn't products: turning an open dataset into a catalog, embedding it, and driving recommendations, search, similar items and the embedding map from a visitor's clicks.
+  - **Art to fashion.** Its fashion pilot puts H&M clothing in the same catalog as the art, and the "Fashion for you" tab ranks it from the visitor's art clicks alone: kimonos for Japanese prints, beaded bracelets for ancient Egypt, statement earrings for portraits. No event in the history involves clothing. It works because both are in one catalog, so a history of art clicks ranks the clothing too; a `filters` query keeps the art grids art-only.
