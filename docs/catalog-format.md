@@ -8,6 +8,16 @@ An item doesn't have to be a product for sale. The columns are named for a store
 job = client.embed("my_catalog.parquet", wait=True, timeout=1800.0)
 ```
 
+Item ages (from `timestamp`) and sales (from `sales_since`) are measured at the upload time. For a historical dataset, pass the moment to measure them at:
+
+```python
+from datetime import UTC, datetime
+
+job = client.embed(
+    "my_catalog.parquet", wait=True, reference_time=datetime(2020, 7, 15, tzinfo=UTC)
+)
+```
+
 ## File
 
 - Only parquet files are accepted.

@@ -113,12 +113,16 @@ class UnboxAIClient:
         timeout: float = 600.0,
         on_progress: Optional[Callable[[JobStatus], None]] = None,
         startup_grace: float = 120.0,
+        reference_time: Optional[datetime | str] = None,
     ) -> EmbedJobDetails:
         """Upload and embed a catalog parquet.
 
         Pass `wait=True` to block until the embed job finishes. While waiting,
         each new job state is printed once; pass `on_progress` to render
         progress yourself, or `on_progress=lambda _: None` for silence.
+
+        `reference_time` is when item ages and sales are measured; the upload
+        time by default.
         """
         if isinstance(path, str):
             path = Path(path)
@@ -130,6 +134,7 @@ class UnboxAIClient:
             timeout=timeout,
             on_progress=on_progress,
             startup_grace=startup_grace,
+            reference_time=reference_time,
         )
 
     def job_status(self, job_id: str) -> JobStatus:

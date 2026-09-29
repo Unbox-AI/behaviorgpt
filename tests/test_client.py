@@ -23,3 +23,11 @@ def test_umap_error_raises_unboxai_error():
     with pytest.raises(UnboxAIError, match="unknown catalog") as exc:
         client.umap(catalog_id="cat")
     assert exc.value.status_code == 404
+
+
+def test_error_classes_import_from_the_package_root():
+    import behaviorgpt
+
+    for name in ["AuthenticationError", "BadRequestError", "RateLimitError"]:
+        assert issubclass(getattr(behaviorgpt, name), behaviorgpt.UnboxAIError)
+    assert behaviorgpt.UnboxAIError is UnboxAIError

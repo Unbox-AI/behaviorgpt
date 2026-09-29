@@ -1,7 +1,15 @@
 import warnings
+from datetime import datetime
 from typing import TYPE_CHECKING, Any, List, Optional
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -44,6 +52,17 @@ class UnboxAIRequest(BaseModel):
     offset: int = Field(default=0, ge=0)
     filters: dict = Field(default_factory=dict)
     register_event: bool = True
+    # The moment the prediction is made; the server uses the current time if unset.
+    timestamp: Optional[datetime] = None
+    # How many nearest-neighbour candidates the server explores.
+    num_candidates: Optional[int] = Field(default=None, gt=0, le=5_000)
+
+    @field_validator("timestamp")
+    @classmethod
+    def require_timezone(cls, timestamp: Optional[datetime]) -> Optional[datetime]:
+        if timestamp is not None and timestamp.tzinfo is None:
+            raise ValueError("timestamp must be timezone-aware")
+        return timestamp
 
     @model_validator(mode="after")
     def validate_pagination(self) -> "UnboxAIRequest":

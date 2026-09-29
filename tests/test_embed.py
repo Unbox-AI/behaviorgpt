@@ -5,6 +5,8 @@ temporary `failed` without an error, 5xx responses and dropped connections
 while polling, and a plain-text 413 from a proxy for an oversized upload.
 """
 
+from datetime import datetime, timedelta, timezone
+
 import httpx
 import pytest
 
@@ -170,6 +172,37 @@ def test_upload_is_a_multipart_file_field(catalog_path):
     post = calls[0]
     assert post.url.path == "/v1/embed-catalog"
     assert b'name="file"; filename="catalog.parquet"' in post.read()
+
+
+def test_reference_time_is_sent_in_utc(catalog_path):
+    catalogs, calls = scripted([status("ready")])
+    moment = datetime(2022, 1, 29, 1, tzinfo=timezone(timedelta(hours=1)))
+    catalogs.embed(catalog_path, reference_time=moment)
+    body = calls[0].read()
+    assert b'name="reference_time"' in body
+    assert b"2022-01-29T00:00:00Z" in body
+
+
+def test_no_reference_time_sends_no_form_field(catalog_path):
+    catalogs, calls = scripted([status("ready")])
+    catalogs.embed(catalog_path)
+    assert b'name="reference_time"' not in calls[0].read()
+
+
+def test_naive_reference_time_is_refused_before_any_request(catalog_path):
+    catalogs, calls = scripted([status("ready")])
+    with pytest.raises(ValueError, match="timezone-aware"):
+        catalogs.embed(catalog_path, reference_time=datetime(2022, 1, 29))
+    assert calls == []
+
+
+def test_client_embed_passes_a_reference_time_string(catalog_path):
+    from behaviorgpt import UnboxAIClient
+
+    client = UnboxAIClient(market="us", api_key="ubx_test", base_url=BASE)
+    client.catalogs, calls = scripted([status("ready")])
+    client.embed(str(catalog_path), reference_time="2022-01-29T00:00:00Z")
+    assert b"2022-01-29T00:00:00Z" in calls[0].read()
 
 
 def test_bad_schema_is_refused_before_any_request(write_catalog):
