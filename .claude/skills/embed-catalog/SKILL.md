@@ -1,11 +1,11 @@
 ---
 name: embed-catalog
-description: Convert a user's product catalog (CSV, TSV, JSON, Excel, Shopify/WooCommerce export, Google Merchant feed, database dump) into the BehaviorGPT catalog parquet and embed it with the UnboxAI API. Use when the user wants to bring, upload, embed, or use their own catalog or products with BehaviorGPT, or asks to build a catalog parquet.
+description: Convert a user's catalog (products, artworks, articles, listings; CSV, TSV, JSON, Excel, Shopify/WooCommerce export, Google Merchant feed, database dump) into the BehaviorGPT catalog parquet and embed it with the UnboxAI API. Use when the user wants to bring, upload, embed, or use their own catalog, products or items with BehaviorGPT, or asks to build a catalog parquet.
 ---
 
 # Embed your own catalog
 
-Goal: take whatever product data the user has, produce one parquet that passes `check_catalog_schema`, upload it with `client.embed`, and hand back the `catalog_id`.
+Goal: take whatever item data the user has, produce one parquet that passes `check_catalog_schema`, upload it with `client.embed`, and hand back the `catalog_id`.
 
 `docs/catalog-format.md` is the source of truth for columns, types and failure modes. Read it before starting. `examples/sample_catalog.csv` shows realistic values for every column. `src/behaviorgpt/resources/catalogs.py` holds `CATALOG_SCHEMA` and `check_catalog_schema`.
 
@@ -37,18 +37,20 @@ Common sources:
 | `price` | `Variant Price` | `Regular price` | number part of `price` |
 | `currency` | ask the user | ask the user | currency part of `price`, e.g. `299.00 SEK` |
 
+For a catalog that isn't products for sale, map by role: the title to `name`, the creator or publisher to `brand`, the taxonomy to `categories`, tags to `keywords`, and leave `price` and `currency` null. [Curate my wall](https://github.com/Unbox-AI/aic-artworks) does this for artworks: artist as `brand`, department, medium and style as `categories`.
+
 Source-specific traps:
 
 - Shopify exports one row per variant and per extra image. Group by `Handle` and keep the first row that has a `Title`.
 - Variant-level catalogs: decide with the user whether a product is the parent or each variant. Default to the parent; variants mostly differ by size and add near-duplicate vectors.
 - `categories` is one comma-separated string, general to specific, e.g. `Clothing, Trousers`.
-- Set `event_type` and `group` to `"product"` on every row.
+- Set `event_type` and `group` to `"product"` on every row, whatever the catalog holds.
 
 ### 3. Fill the popularity columns when order data exists
 
-Ask whether the user has order or sales history. Without it, leave `sales_since`, `timestamp`, `frequency` null and say that every product will rank as equally popular.
+Ask whether the user has order or sales history, or for other catalogs any interaction counts such as views, plays or saves. Without it, leave `sales_since`, `timestamp`, `frequency` null and say that every item will rank as equally popular.
 
-With order lines (product id + date + quantity), compute per product, relative to today:
+With order lines (item id + date + quantity), compute per item, relative to today:
 
 - `sales_since`: 12 int64 values. Units sold in the trailing 30, 60, 90, ..., 330 days (11 cumulative windows, so values never decrease), then the all-time total.
 - `timestamp`: epoch seconds of the first sale.
@@ -56,7 +58,7 @@ With order lines (product id + date + quantity), compute per product, relative t
 
 ### 4. Enforce the limits
 
-- At most 20 000 products. If the source is larger, ask the user how to select, and suggest the top 20 000 by `frequency` or recent sales.
+- At most 20 000 items. If the source is larger, ask the user how to select, and suggest the top 20 000 by `frequency` or recent sales.
 - Unique `id`. Report how many duplicates were dropped; the server would silently keep the first.
 - `id` and `name` must be non-null. Drop rows missing either and report the count.
 
@@ -93,11 +95,11 @@ On failure, `UnboxAIError` carries the server's reason. `client.job_status(job.j
 Run one query and one similarity lookup against the new catalog, and show the top names:
 
 ```python
-res = client.complete(history=[Search("<something the store sells>")], catalog_id=job.catalog_id, limit=5)
+res = client.complete(history=[Search("<something in the catalog>")], catalog_id=job.catalog_id, limit=5)
 print(res.names)
 
-pick = client.random_product(job.catalog_id)
-print(pick.data["name"], "->", client.similar_products(pick.id, catalog_id=job.catalog_id).names[:5])
+pick = client.random_item(job.catalog_id)
+print(pick.data["name"], "->", client.similar_items(pick.id, catalog_id=job.catalog_id).names[:5])
 ```
 
 Finish by giving the user the `catalog_id` (private to their API key), and point them to steps 6 to 8 of `notebooks/showcase.ipynb` and the demo at https://behaviorgpt.unboxai.com/ ("Bring your own catalog").

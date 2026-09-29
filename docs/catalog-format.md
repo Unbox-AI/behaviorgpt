@@ -1,6 +1,8 @@
 # Catalog format
 
-`client.embed(path)` uploads one parquet file. The server places every row in the model's product space. This page describes what the file must contain and how to build it from a CSV.
+`client.embed(path)` uploads one parquet file. The server places every row in the model's item space. This page describes what the file must contain and how to build it from a CSV.
+
+An item doesn't have to be a product for sale. The columns are named for a store, but they map onto other catalogs too. [Curate my wall](https://github.com/Unbox-AI/aic-artworks) embeds artworks with the title as `name`, the artist as `brand`, department, medium and style as `categories`, and the museum's view counts standing in for sales.
 
 ```python
 job = client.embed("my_catalog.parquet", wait=True, timeout=1800.0)
@@ -18,16 +20,16 @@ job = client.embed("my_catalog.parquet", wait=True, timeout=1800.0)
 
 | Column | Arrow type | Nullable | Role |
 |---|---|---|---|
-| `id` | string | no | Product key. Must be unique. Duplicate ids collapse to the first row. |
-| `name` | string | no | Product title. Primary text input to the embedding. |
+| `id` | string | no | Item key. Must be unique. Duplicate ids collapse to the first row. |
+| `name` | string | no | Item title. Primary text input to the embedding. |
 | `brand` | string | yes | Appended to the embedding text. |
 | `categories` | string | yes | Comma-separated path, e.g. `Clothing, Trousers`. Appended to the embedding text and split into keywords. |
 | `image_url` | string | yes | Full `https://` URL, fetchable without a login or browser. Fetched and encoded into the embedding. Null or unreachable means text-only embedding for that row, but if none of the first 500 fetched images is usable the job fails (see below). |
-| `event_type` | string | no | Set every row to `product`. |
-| `group` | string | no | Set every row to `product`. |
+| `event_type` | string | no | Set every row to `product`, whatever the catalog holds. |
+| `group` | string | no | Set every row to `product`, whatever the catalog holds. |
 | `sales_since` | list of int64 | yes | 12 integers: sales in the trailing 30, 60, ..., 330 days, then the all-time total. Popularity signal. Null is treated as all zeros. |
 | `timestamp` | int64 | yes | Epoch seconds of the first sale. Recency signal. |
-| `frequency` | int64 | yes | Total interactions with the product. Popularity signal. |
+| `frequency` | int64 | yes | Total interactions with the item. Popularity signal. |
 | `market` | string | yes | Market code, e.g. `SE`. |
 | `price` | string | yes | Display only. Keep as string, e.g. `"299.00"`. |
 | `currency` | string | yes | Display only, e.g. `SEK`. |
@@ -44,7 +46,7 @@ Listed in order of impact.
 
 1. `image_url`. For visual categories this carries most of the signal. The URL must be a complete `https://` address that returns the image without authentication. Relative paths, `gs://`, `s3://`, and login-gated URLs are never fetched.
 2. `categories` and `brand`. They join the title in the embedding text.
-3. `sales_since`, `timestamp`, `frequency`. These drive popularity and recency. Without them all products rank as equally popular.
+3. `sales_since`, `timestamp`, `frequency`. These drive popularity and recency. Without them all items rank as equally popular.
 
 ## Hosting your catalog
 
