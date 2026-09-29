@@ -13,9 +13,9 @@ from behaviorgpt.types.events import (
 from behaviorgpt.types.http import (
     EmbedJobDetails,
     Item,
+    ItemsRejected,
     JobStatus,
-    ProductsRejected,
-    RejectedProduct,
+    RejectedItem,
     SimilarProductsRequest,
     UnboxAIRequest,
     UnboxAIResponse,
@@ -36,8 +36,8 @@ __all__ = [
     "SimilarProductsRequest",
     "EmbedJobDetails",
     "JobStatus",
-    "ProductsRejected",
-    "RejectedProduct",
+    "ItemsRejected",
+    "RejectedItem",
     "Item",
     "CartItem",
 ]
