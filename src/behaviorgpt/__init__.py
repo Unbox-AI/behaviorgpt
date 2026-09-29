@@ -1,4 +1,10 @@
 from behaviorgpt._client import UnboxAIClient
+from behaviorgpt._exceptions import (
+    AuthenticationError,
+    BadRequestError,
+    RateLimitError,
+    UnboxAIError,
+)
 from behaviorgpt.resources.catalogs import ProgressPrinter
 from behaviorgpt.types.events import (
     AddToCart,
@@ -16,4 +22,8 @@ __all__ = [
     "Order",
     "UnboxAIClient",
     "ProgressPrinter",
+    "UnboxAIError",
+    "AuthenticationError",
+    "BadRequestError",
+    "RateLimitError",
 ]
