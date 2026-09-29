@@ -1,5 +1,6 @@
 import time
 import warnings
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -69,6 +70,15 @@ def check_catalog_schema(path: Path) -> None:
         )
 
 
+def format_reference_time(reference_time: datetime | str) -> str:
+    """Format `reference_time` for the upload; a `datetime` must be timezone-aware."""
+    if isinstance(reference_time, str):
+        return reference_time
+    if reference_time.tzinfo is None:
+        raise ValueError("reference_time must be timezone-aware")
+    return reference_time.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 class ProgressPrinter:
     """Default `on_progress` callback: print each new state once.
 
@@ -100,6 +110,7 @@ class Catalogs:
         timeout: float = 600.0,
         on_progress: Optional[Callable[[JobStatus], None]] = None,
         startup_grace: float = 120.0,
+        reference_time: Optional[datetime | str] = None,
     ) -> EmbedJobDetails:
         """Upload the parquet at `path`.
 
@@ -112,11 +123,17 @@ class Catalogs:
         default each new state is printed once (see `ProgressPrinter`).
         """
         check_catalog_schema(path)
+        form = (
+            {}
+            if reference_time is None
+            else {"reference_time": format_reference_time(reference_time)}
+        )
 
         with open(path, "rb") as f:
             response = self._client.post(
                 "/embed-catalog",
                 files={"file": (path.name, f, "application/octet-stream")},
+                data=form,
             )
 
         data = handle_response(response)
