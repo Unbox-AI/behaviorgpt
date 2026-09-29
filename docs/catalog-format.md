@@ -48,6 +48,10 @@ Listed in order of impact.
 2. `categories` and `brand`. They join the title in the embedding text.
 3. `sales_since`, `timestamp`, `frequency`. These drive popularity and recency. Without them all items rank as equally popular.
 
+## Catalog size and the UMAP
+
+`client.umap()` returns a 2D map of the catalog's items. The map is built only for catalogs of up to 100,000 items, within about a minute after the catalog reads `ready`. Laying out more items than that does not fit in the embedding worker's memory, so larger catalogs, such as the shared `retail_catalog`, never get one. Embedding and every query work the same at any size; only the map is skipped. For a catalog without a map, `umap()` raises `UnboxAIError` with status 404.
+
 ## Hosting your catalog
 
 The parquet itself is uploaded, but images are fetched from their `image_url` by UnboxAI's servers. Every URL must therefore be public, `https://`, and reachable from a server, not only from a browser. Some sites put images behind bot protection (Cloudflare, for example) that serves browsers but blocks servers; the job then fails when all image fetches come back 403. Test a few URLs with `curl` from a cloud machine if in doubt.

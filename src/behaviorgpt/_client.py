@@ -234,6 +234,14 @@ class UnboxAIClient:
         return events
 
     def umap(self, *, catalog_id: Optional[str] = None):
+        """The catalog's UMAP, a 2D map of its items, as an HTML page.
+
+        Maps exist only for catalogs of up to 100,000 items, and appear within
+        about a minute after the catalog is ready: laying out more items than
+        that does not fit in the embedding worker's memory, so larger catalogs
+        (such as the shared `retail_catalog`) never get one. A missing map
+        raises `UnboxAIError` with status 404 and says which case applies.
+        """
         active_catalog: str = catalog_id or self.default_catalog_id
         return self.catalogs.get_umap(catalog_id=active_catalog)
 
