@@ -1,14 +1,23 @@
 [project]
 name = "behaviorgpt"
 version = "0.1.0"
-description = "BehaviorGPT by UnboxAI"
+description = "Python client for BehaviorGPT, UnboxAI's Large Behavioral Model for search, recommendations and personalization"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Unbox AI" }]
+keywords = ["recommendations", "personalization", "search", "behavioral model", "unboxai"]
 requires-python = ">=3.11"
 dependencies = [
     "httpx>=0.28.1",
     "pyarrow>=25.0.1",
     "pydantic>=2.13.4",
 ]
+
+[project.urls]
+Homepage = "https://unboxai.com/behaviorgpt"
+Repository = "https://github.com/Unbox-AI/behaviorgpt"
+Demo = "https://behaviorgpt.unboxai.com/"
 
 [build-system]
 requires = ["uv_build>=0.12.3,<0.13.0"]
