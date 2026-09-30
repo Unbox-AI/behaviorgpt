@@ -17,7 +17,7 @@ Two apps built on this SDK, one on a store's catalog and one on a museum's:
 
 **BehaviorGPT** is UnboxAI's Large Behavioral Model. It is trained on long sequences of things people actually did (viewed this, added that, bought the other) and predicts what comes next, so search, recommendations and personalization are the same call with different histories. BehaviorGPT-v4 is a single 12.5B-parameter model pretrained on 150 billion user actions across retail, engagement and payments, and it ranks catalogs it has never seen with no training.
 
-This repository holds the Python client for the UnboxAI API and a notebook that walks through the model step by step.
+This repository holds the Python client for the UnboxAI API, a notebook that walks through the model step by step, and a notebook that reproduces our PixelRec benchmark through the API.
 
 ## Requirements
 
@@ -73,6 +73,19 @@ uv run jupyter lab
 ```
 
 JupyterLab opens in your browser. Open the notebook and pick the `behaviorgpt-env` kernel.
+
+## Benchmark reproduction
+
+[`notebooks/benchmark_reproduction.ipynb`](https://github.com/Unbox-AI/behaviorgpt/blob/main/notebooks/benchmark_reproduction.ipynb) reproduces the zero-shot PixelRec evaluation from our paper through the API. It builds the benchmark split from the official PixelRec download, asks the model for a ranking at each of the 79,399 evaluated positions, and computes recall, NDCG and MRR from the returned rankings. It ranks the hosted catalog `PixelRec200K`, so nothing is uploaded.
+
+Setup is the same as for the notebook above. Then download `Pixel200K.csv` from both the "Interaction" and the "Item Information" folders linked in the [PixelRec repository](https://github.com/westlake-repl/PixelRec), and place them as:
+
+```
+notebooks/data/pixelrec/raw/interactions/Pixel200K.csv
+notebooks/data/pixelrec/raw/items/Pixel200K.csv
+```
+
+The notebook runs [`scripts/prepare_pixelrec.py`](https://github.com/Unbox-AI/behaviorgpt/blob/main/scripts/prepare_pixelrec.py) on them, then makes one API call per position, about an hour in all; it saves as it goes and resumes where it stopped. It writes the benchmark split (about 115 MB) to `notebooks/data/` and the rankings (about 95 MB) to `notebooks/results/`.
 
 ## Your own catalog
 
