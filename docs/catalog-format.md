@@ -8,6 +8,16 @@ An item doesn't have to be a product for sale. The columns are named for a store
 job = client.embed("my_catalog.parquet", wait=True, timeout=1800.0)
 ```
 
+Item ages (from `timestamp`) and sales (from `sales_since`) are measured at the upload time. For a historical dataset, pass the moment to measure them at:
+
+```python
+from datetime import UTC, datetime
+
+job = client.embed(
+    "my_catalog.parquet", wait=True, reference_time=datetime(2020, 7, 15, tzinfo=UTC)
+)
+```
+
 ## File
 
 - Only parquet files are accepted.
@@ -47,6 +57,10 @@ Listed in order of impact.
 1. `image_url`. For visual categories this carries most of the signal. The URL must be a complete `https://` address that returns the image without authentication. Relative paths, `gs://`, `s3://`, and login-gated URLs are never fetched.
 2. `categories` and `brand`. They join the title in the embedding text.
 3. `sales_since`, `timestamp`, `frequency`. These drive popularity and recency. Without them all items rank as equally popular.
+
+## Catalog size and the UMAP
+
+`client.umap()` returns a 2D map of the catalog's items. The map is built only for catalogs of up to 100,000 items, within about a minute after the catalog reads `ready`. Laying out more items than that does not fit in the embedding worker's memory, so larger catalogs, such as the shared `retail_catalog`, never get one. Embedding and every query work the same at any size; only the map is skipped. For a catalog without a map, `umap()` raises `UnboxAIError` with status 404.
 
 ## Hosting your catalog
 

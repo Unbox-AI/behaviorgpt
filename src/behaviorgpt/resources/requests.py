@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import List, Optional
 
 from behaviorgpt.types import (
@@ -22,6 +23,8 @@ class UnboxAIRequester:
         offset: int = 0,
         filters: Optional[dict] = None,
         register_event: bool = False,
+        timestamp: Optional[datetime] = None,
+        num_candidates: Optional[int] = None,
     ) -> UnboxAIRequest:
         return UnboxAIRequest(
             query=query,
@@ -33,4 +36,6 @@ class UnboxAIRequester:
             offset=offset,
             filters=filters or {},
             register_event=register_event,
+            timestamp=timestamp,
+            num_candidates=num_candidates,
         )
