@@ -76,3 +76,7 @@ examples/*.parquet
 
 # Personal Claude Code settings
 .claude/settings.local.json
+
+# Benchmark data and scored positions written by the notebooks
+notebooks/data/
+notebooks/results/
