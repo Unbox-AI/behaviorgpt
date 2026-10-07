@@ -1,21 +1,10 @@
 # BehaviorGPT
 
-**The foundation model for behavior.** [Website](https://unboxai.com/behaviorgpt) · [Live demo](https://behaviorgpt.unboxai.com/) · [Research](https://research.unboxai.com) · [Notebook](https://github.com/Unbox-AI/behaviorgpt/blob/main/notebooks/showcase.ipynb)
-
-Two apps built on this SDK, one on a store's catalog and one on a museum's:
-
-<table>
-  <tr>
-    <td width="50%"><a href="https://behaviorgpt.unboxai.com/"><img src="docs/images/storefront.png" alt="The storefront demo: after a search for golf clubs, a search for gloves returns golf gloves"></a></td>
-    <td width="50%"><a href="https://github.com/Unbox-AI/aic-artworks"><img src="docs/images/curate-my-wall.png" alt="Curate my wall: three Hokusai prints hung on the wall, and the fashion they lead to: printed scarves, a tiger-print tee and a kimono"></a></td>
-  </tr>
-  <tr>
-    <td><b>Storefront</b> (<a href="https://behaviorgpt.unboxai.com/">live demo</a>). "gloves" after "golf clubs" returns golf gloves; the panel shows the history the model read.</td>
-    <td><b>Curate my wall</b> (<a href="https://aic-artworks.streamlit.app/">live app</a>, <a href="https://github.com/Unbox-AI/aic-artworks">source</a>). Hang three Hokusai prints and the same clicks pick your clothes: scarves and kimonos from an art history alone.</td>
-  </tr>
-</table>
+**The foundation model for behavior.**
 
 **BehaviorGPT** is UnboxAI's Large Behavioral Model. It is trained on long sequences of things people actually did (viewed this, added that, bought the other) and predicts what comes next, so search, recommendations and personalization are the same call with different histories. BehaviorGPT-v4 is a single 12.5B-parameter model pretrained on 150 billion user actions across retail, engagement and payments, and it ranks catalogs it has never seen with no training.
+
+[Website](https://unboxai.com/behaviorgpt) · [Live demo](https://behaviorgpt.unboxai.com/) · [Research](https://research.unboxai.com) · [Notebook](https://github.com/Unbox-AI/behaviorgpt/blob/main/notebooks/showcase.ipynb)
 
 This repository holds the Python client for the UnboxAI API, a notebook that walks through the model step by step, and a notebook that reproduces our PixelRec benchmark through the API.
 
@@ -108,6 +97,19 @@ If mapping your data to the format is hard, open a coding agent in this director
 A history is a list of `Search`, `View`, `AddToCart`, `RemoveFromCart` and `Order` events. The names come from a store because that is what the API accepts, but they work for any catalog: map your users' actions by meaning. Curate my wall, below, sends "look closer" as `View`, "hang it on the wall" as `AddToCart` and "take it down" as `RemoveFromCart`.
 
 ## Demo and examples
+
+Two apps built on this SDK, one on a store's catalog and one on a museum's:
+
+<table>
+  <tr>
+    <td width="50%"><a href="https://behaviorgpt.unboxai.com/"><img src="docs/images/storefront.png" alt="The storefront demo: after a search for golf clubs, a search for gloves returns golf gloves"></a></td>
+    <td width="50%"><a href="https://github.com/Unbox-AI/aic-artworks"><img src="docs/images/curate-my-wall.png" alt="Curate my wall: three Hokusai prints hung on the wall, and the fashion they lead to: printed scarves, a tiger-print tee and a kimono"></a></td>
+  </tr>
+  <tr>
+    <td><b>Storefront</b> (<a href="https://behaviorgpt.unboxai.com/">live demo</a>). "gloves" after "golf clubs" returns golf gloves; the panel shows the history the model read.</td>
+    <td><b>Curate my wall</b> (<a href="https://aic-artworks.streamlit.app/">live app</a>, <a href="https://github.com/Unbox-AI/aic-artworks">source</a>). Hang three Hokusai prints and the same clicks pick your clothes: scarves and kimonos from an art history alone.</td>
+  </tr>
+</table>
 
 - [behaviorgpt.unboxai.com](https://behaviorgpt.unboxai.com/): a storefront, with recommendations, personalized search and a cart driven by the shopper's clicks. To try it on your catalog once it is embedded, select the **BehaviorGPT V4.0-12.5B** model, choose **Bring your own catalog** and enter your API key. Images must be publicly reachable for the demo to display them.
 - [Curate my wall](https://github.com/Unbox-AI/aic-artworks) ([live app](https://aic-artworks.streamlit.app/)): an art recommender over 19 000 public-domain artworks from the Art Institute of Chicago. It shows the whole path for a catalog that isn't products: turning an open dataset into a catalog, embedding it, and driving recommendations, search, similar items and the embedding map from a visitor's clicks.
