@@ -89,8 +89,8 @@ Two apps built on this SDK, one on a store's catalog and one on a museum's:
 
 <table>
   <tr>
-    <td width="50%"><a href="https://behaviorgpt.unboxai.com/"><img src="docs/images/storefront.png" alt="The storefront demo: after a search for golf clubs, a search for gloves returns golf gloves"></a></td>
-    <td width="50%"><a href="https://github.com/Unbox-AI/aic-artworks"><img src="docs/images/curate-my-wall.png" alt="Curate my wall: three Hokusai prints hung on the wall, and the fashion they lead to: printed scarves, a tiger-print tee and a kimono"></a></td>
+    <td width="50%"><a href="https://behaviorgpt.unboxai.com/"><img src="https://raw.githubusercontent.com/Unbox-AI/behaviorgpt/main/docs/images/storefront.png" alt="The storefront demo: after a search for golf clubs, a search for gloves returns golf gloves"></a></td>
+    <td width="50%"><a href="https://github.com/Unbox-AI/aic-artworks"><img src="https://raw.githubusercontent.com/Unbox-AI/behaviorgpt/main/docs/images/curate-my-wall.png" alt="Curate my wall: three Hokusai prints hung on the wall, and the fashion they lead to: printed scarves, a tiger-print tee and a kimono"></a></td>
   </tr>
   <tr>
     <td><b>Storefront</b> (<a href="https://behaviorgpt.unboxai.com/">live demo</a>). "gloves" after "golf clubs" returns golf gloves; the panel shows the history the model read.</td>
