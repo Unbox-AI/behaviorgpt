@@ -2,15 +2,30 @@
 
 **The foundation model for behavior.**
 
-**BehaviorGPT** is UnboxAI's Large Behavioral Model. It is trained on long sequences of things people actually did (viewed this, added that, bought the other) and predicts what comes next, so search, recommendations and personalization are the same call with different histories. BehaviorGPT-v4 is a single 12.5B-parameter model pretrained on 150 billion user actions across retail, engagement and payments, and it ranks catalogs it has never seen with no training.
+BehaviorGPT is Unbox AI's Large Behavioral Model. It is trained on long sequences of things people actually did (viewed this, added that, bought the other) and predicts what comes next, so search, recommendations and personalization are the same call with different histories. BehaviorGPT-v4 is a single 12.5B-parameter model pretrained on 150 billion user actions across retail, engagement and payments, and it ranks catalogs it has never seen with no training.
 
 [Website](https://unboxai.com/behaviorgpt) · [Live demo](https://behaviorgpt.unboxai.com/) · [Research](https://research.unboxai.com) · [Notebook](https://github.com/Unbox-AI/behaviorgpt/blob/main/notebooks/showcase.ipynb)
 
-This repository holds the Python client for the UnboxAI API and a notebook that walks through the model step by step.
+This repository holds the Python SDK for the Unbox AI API and a notebook that walks through the model step by step.
+
+Three apps built on this SDK: two that recommend, on a store's catalog and a museum's, and one that reads the same rankings as a fraud detector. More on each in [Demo and examples](#demo-and-examples).
+
+<table>
+  <tr>
+    <td width="33%"><a href="https://behaviorgpt.unboxai.com/"><img src="https://raw.githubusercontent.com/Unbox-AI/behaviorgpt/main/docs/images/storefront.png" alt="The storefront demo: after a search for golf clubs, a search for gloves returns golf gloves"></a></td>
+    <td width="33%"><a href="https://github.com/Unbox-AI/aic-artworks"><img src="https://raw.githubusercontent.com/Unbox-AI/behaviorgpt/main/docs/images/curate-my-wall.png" alt="Curate my wall: three Hokusai prints hung on the wall, and the fashion they lead to: printed scarves, a tiger-print tee and a kimono"></a></td>
+    <td width="33%"><a href="https://github.com/Unbox-AI/behaviorgpt-anomaly"><img src="https://raw.githubusercontent.com/Unbox-AI/behaviorgpt/main/docs/images/anomaly-detection.png" alt="Anomaly detection: an account takeover after headphone views, flagged at step 8 when a carted lawn mower pushes the session's risk past the barrier"></a></td>
+  </tr>
+  <tr>
+    <td><b>Storefront</b> (<a href="https://behaviorgpt.unboxai.com/">live demo</a>). Search results and recommendations change with what the shopper did before, and a panel shows the history the model read.</td>
+    <td><b>Curate my wall</b> (<a href="https://aic-artworks.streamlit.app/">live app</a>, <a href="https://github.com/Unbox-AI/aic-artworks">source</a>). Hang three Hokusai prints, and the "Fashion for you" tab suggests scarves and kimonos from those art clicks alone.</td>
+    <td><b>Anomaly detection</b> (<a href="https://github.com/Unbox-AI/behaviorgpt-anomaly">source</a>). An account takeover: after the owner's headphone views, someone carts a phone and then a lawn mower, and the session is flagged at the mower, the step where its risk crosses the barrier.</td>
+  </tr>
+</table>
 
 ## Requirements
 
-- An UnboxAI API key. Create & copy the key at [unboxai.com/behaviorgpt](https://unboxai.com/behaviorgpt); the key also arrives by email.
+- An Unbox AI API key. Create and copy the key at [unboxai.com/behaviorgpt](https://unboxai.com/behaviorgpt); the key also arrives by email.
 - Python 3.11 or newer.
 
 ## Quick start
@@ -67,8 +82,8 @@ JupyterLab opens in your browser. Open the notebook and pick the `behaviorgpt-en
 
 The model can only return items it knows about. Out of the box the client uses `retail_catalog`, a sample retail catalog. To use the model on your own data, upload your catalog as a parquet file. A catalog doesn't have to be products for sale: artworks, articles, listings or anything else people browse and pick from work the same way.
 
-- The required columns and types are described in [`docs/catalog-format.md`](https://github.com/Unbox-AI/behaviorgpt/blob/main/docs/catalog-format.md).
-- A catalog can hold at most 20 000 items.
+- [`docs/catalog-format.md`](https://github.com/Unbox-AI/behaviorgpt/blob/main/docs/catalog-format.md) lists the required columns and types.
+- A catalog can hold at most 20,000 items.
 - Each API key can hold 2 catalogs. The file name is the catalog's name: uploading a file with the same name again refreshes that catalog and keeps its `catalog_id`, and a new name takes one of the 2 slots. A failed upload does not use up a slot. Once both slots are in use, an upload under a new name is refused; to remove a catalog or raise the limit, contact alexander@unboxai.com.
 - [`examples/sample_catalog.csv`](https://github.com/Unbox-AI/behaviorgpt/blob/main/examples/sample_catalog.csv) is an example only, showing what each column should contain. Your own file will look different depending on your catalog, and it has to be converted to the parquet structure described in the format doc before upload.
 
@@ -81,23 +96,13 @@ If mapping your data to the format is hard, open a coding agent in this director
 
 ### Events
 
-A history is a list of `Search`, `View`, `AddToCart`, `RemoveFromCart` and `Order` events. The names come from a store because that is what the API accepts, but they work for any catalog: map your users' actions by meaning. Curate my wall, below, sends "look closer" as `View`, "hang it on the wall" as `AddToCart` and "take it down" as `RemoveFromCart`.
+A history is a list of `Search`, `View`, `AddToCart`, `RemoveFromCart` and `Order` events. The names come from a store because that is what the API accepts, but they work for any catalog: map your users' actions by meaning. Curate my wall sends "look closer" as `View`, "hang it on the wall" as `AddToCart` and "take it down" as `RemoveFromCart`.
 
 ## Demo and examples
 
-Two apps built on this SDK, one on a store's catalog and one on a museum's:
-
-<table>
-  <tr>
-    <td width="50%"><a href="https://behaviorgpt.unboxai.com/"><img src="https://raw.githubusercontent.com/Unbox-AI/behaviorgpt/main/docs/images/storefront.png" alt="The storefront demo: after a search for golf clubs, a search for gloves returns golf gloves"></a></td>
-    <td width="50%"><a href="https://github.com/Unbox-AI/aic-artworks"><img src="https://raw.githubusercontent.com/Unbox-AI/behaviorgpt/main/docs/images/curate-my-wall.png" alt="Curate my wall: three Hokusai prints hung on the wall, and the fashion they lead to: printed scarves, a tiger-print tee and a kimono"></a></td>
-  </tr>
-  <tr>
-    <td><b>Storefront</b> (<a href="https://behaviorgpt.unboxai.com/">live demo</a>). "gloves" after "golf clubs" returns golf gloves; the panel shows the history the model read.</td>
-    <td><b>Curate my wall</b> (<a href="https://aic-artworks.streamlit.app/">live app</a>, <a href="https://github.com/Unbox-AI/aic-artworks">source</a>). Hang three Hokusai prints and the same clicks pick your clothes: scarves and kimonos from an art history alone.</td>
-  </tr>
-</table>
+More on the three apps shown at the top of this page:
 
 - [behaviorgpt.unboxai.com](https://behaviorgpt.unboxai.com/): a storefront, with recommendations, personalized search and a cart driven by the shopper's clicks. To try it on your catalog once it is embedded, select the **BehaviorGPT V4.0-12.5B** model, choose **Bring your own catalog** and enter your API key. Images must be publicly reachable for the demo to display them.
-- [Curate my wall](https://github.com/Unbox-AI/aic-artworks) ([live app](https://aic-artworks.streamlit.app/)): an art recommender over 19 000 public-domain artworks from the Art Institute of Chicago. It shows the whole path for a catalog that isn't products: turning an open dataset into a catalog, embedding it, and driving recommendations, search, similar items and the embedding map from a visitor's clicks.
-  - **Art to fashion.** Its fashion pilot puts H&M clothing in the same catalog as the art, and the "Fashion for you" tab ranks it from the visitor's art clicks alone: kimonos for Japanese prints, beaded bracelets for ancient Egypt, statement earrings for portraits. No event in the history involves clothing. It works because both are in one catalog, so a history of art clicks ranks the clothing too; a `filters` query keeps the art grids art-only.
+- [Curate my wall](https://github.com/Unbox-AI/aic-artworks) ([live app](https://aic-artworks.streamlit.app/)): an art recommender over 19,000 public-domain artworks from the Art Institute of Chicago. It shows the whole path for a catalog that isn't products: turning an open dataset into a catalog, embedding it, and driving recommendations, search, similar items and the embedding map from a visitor's clicks.
+  - **Art to fashion.** Its fashion pilot puts H&M clothing in the same catalog as the art, and the "Fashion for you" tab ranks it from the visitor's art clicks alone: kimonos for Japanese prints, beaded bracelets for ancient Egypt, statement earrings for portraits. No event in the history involves clothing. It works because the art and the clothing share one catalog; a `filters` query keeps the art grids art-only.
+- [Anomaly detection](https://github.com/Unbox-AI/behaviorgpt-anomaly): scores every step of a shopping session by how likely the model finds it given the history so far, and flags the step where a session crosses a calibrated risk barrier, naming the items that pushed it there. It needs no fraud labels, rules or training. It runs on the public `retail_catalog`, and its bundled examples work without an API key.
