@@ -1,3 +1,5 @@
+from typing import Union
+
 import httpx
 
 from behaviorgpt._exceptions import (
@@ -6,6 +8,20 @@ from behaviorgpt._exceptions import (
     RateLimitError,
     UnboxAIError,
 )
+from behaviorgpt.types import UnboxAIRequest, UnboxAIResponse
+
+
+def as_request(payload: Union[UnboxAIRequest, dict]) -> UnboxAIRequest:
+    return UnboxAIRequest(**payload) if isinstance(payload, dict) else payload
+
+
+def request_body(payload: UnboxAIRequest) -> dict:
+    return payload.model_dump(mode="json", exclude_none=True)
+
+
+def ranked_response(payload: UnboxAIRequest, data: dict) -> UnboxAIResponse:
+    market_val = getattr(payload.domains, "market", None)
+    return UnboxAIResponse(**data, market=market_val)
 
 
 def handle_response(response: httpx.Response):

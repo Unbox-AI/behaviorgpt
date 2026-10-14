@@ -2,8 +2,15 @@ from typing import Union
 
 import httpx
 
-from behaviorgpt.resources._shared import handle_response
+from behaviorgpt.resources._shared import (
+    as_request,
+    handle_response,
+    ranked_response,
+    request_body,
+)
 from behaviorgpt.types import UnboxAIRequest, UnboxAIResponse
+
+PATH = "/vector/search"
 
 
 class Searcher:
@@ -13,16 +20,20 @@ class Searcher:
     def create(
         self, payload: Union[UnboxAIRequest, dict], *, headers: dict | None = None
     ) -> UnboxAIResponse:
-        if isinstance(payload, dict):
-            payload = UnboxAIRequest(**payload)
+        payload = as_request(payload)
+        response = self._client.post(PATH, json=request_body(payload), headers=headers)
+        return ranked_response(payload, handle_response(response))
 
-        response = self._client.post(
-            "/vector/search",
-            json=payload.model_dump(mode="json", exclude_none=True),
-            headers=headers,
+
+class AsyncSearcher:
+    def __init__(self, http_client: httpx.AsyncClient):
+        self._client = http_client
+
+    async def create(
+        self, payload: Union[UnboxAIRequest, dict], *, headers: dict | None = None
+    ) -> UnboxAIResponse:
+        payload = as_request(payload)
+        response = await self._client.post(
+            PATH, json=request_body(payload), headers=headers
         )
-
-        data = handle_response(response)
-        market_val = getattr(payload.domains, "market", None)
-
-        return UnboxAIResponse(**data, market=market_val)
+        return ranked_response(payload, handle_response(response))
