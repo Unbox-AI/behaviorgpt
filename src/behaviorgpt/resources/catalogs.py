@@ -1,3 +1,4 @@
+import asyncio
 import time
 import warnings
 from datetime import UTC, datetime
@@ -96,6 +97,119 @@ class ProgressPrinter:
             self.last = line
 
 
+def upload_form(path: Path, reference_time: Optional[datetime | str]) -> dict:
+    """Check the parquet and return the upload's form fields."""
+    check_catalog_schema(path)
+    if reference_time is None:
+        return {}
+    return {"reference_time": format_reference_time(reference_time)}
+
+
+def similar_items_body(
+    item_id: str, catalog_id: str, limit: int, offset: int, filters: Optional[dict]
+) -> dict:
+    req = SimilarItemsRequest(
+        item_id=item_id,
+        store_id=catalog_id,
+        limit=limit,
+        offset=offset,
+        filters=filters or {},
+    )
+    return req.model_dump(mode="json")
+
+
+def umap_page(response: httpx.Response) -> str:
+    if response.is_error:
+        handle_response(response)
+    return response.text
+
+
+class JobWatcher:
+    """The rules `wait_for_job` polls by, for the sync and the async client alike.
+
+    The caller reads the status, passes the result to `read` or the exception
+    to `read_failed`, and hands what they return to `check`, which returns the
+    ready status, raises, or returns None to poll again after `interval`.
+    """
+
+    def __init__(
+        self,
+        job_id: str,
+        interval: float,
+        timeout: float,
+        on_progress: Optional[Callable[[JobStatus], None]],
+        startup_grace: float,
+        failed_grace: float,
+    ):
+        self.job_id = job_id
+        self.interval = interval
+        self.timeout = timeout
+        self.on_progress = on_progress or ProgressPrinter()
+        self.startup_grace = startup_grace
+        self.failed_grace = failed_grace
+        self.started = time.monotonic()
+        self.deadline = self.started + timeout
+        self.seen = False
+        self.last_state = QUEUED_STATUS
+        self.failed_since: Optional[float] = None
+        self.read_error: Optional[Exception] = None
+
+    def read(self, status: JobStatus) -> JobStatus:
+        self.seen = True
+        self.read_error = None
+        return status
+
+    def read_failed(self, exc: Exception) -> Optional[JobStatus]:
+        """A status that stands in for the failed read, or None; raises the
+        errors that end the wait."""
+        if isinstance(exc, httpx.TransportError):
+            self.read_error = exc
+            return None
+        if isinstance(exc, UnboxAIError):
+            not_started = (
+                exc.status_code == 404
+                and not self.seen
+                and time.monotonic() - self.started < self.startup_grace
+            )
+            if not_started:
+                return JobStatus(job_id=self.job_id, status=QUEUED_STATUS)
+            if exc.status_code in RETRYABLE_STATUS_CODES:
+                self.read_error = exc
+                return None
+        raise exc
+
+    def check(self, status: Optional[JobStatus]) -> Optional[JobStatus]:
+        if status is not None:
+            self.on_progress(status)
+            self.last_state = status.status.lower()
+
+            if self.last_state == READY_STATUS:
+                return status
+
+            if self.last_state == FAILED_STATUS:
+                now = time.monotonic()
+                if self.failed_since is None:
+                    self.failed_since = now
+                if status.error or now - self.failed_since >= self.failed_grace:
+                    reason = f": {status.error}" if status.error else ""
+                    raise UnboxAIError(
+                        f"Embed job {self.job_id} failed{reason}",
+                        response=status.model_dump(),
+                    )
+            else:
+                self.failed_since = None
+
+        if time.monotonic() + self.interval > self.deadline:
+            message = (
+                f"Embed job {self.job_id} still '{self.last_state}' "
+                f"after {self.timeout:g}s"
+            )
+            if self.read_error:
+                message += f"; last status read failed: {self.read_error}"
+            raise UnboxAIError(message)
+        return None
+
+
 class Catalogs:
     """Upload a catalog parquet and embed it into the model's item space."""
 
@@ -122,12 +236,7 @@ class Catalogs:
         `on_progress` is called with each status read while waiting; by
         default each new state is printed once (see `ProgressPrinter`).
         """
-        check_catalog_schema(path)
-        form = (
-            {}
-            if reference_time is None
-            else {"reference_time": format_reference_time(reference_time)}
-        )
+        form = upload_form(path, reference_time)
 
         with open(path, "rb") as f:
             response = self._client.post(
@@ -186,63 +295,16 @@ class Catalogs:
         A status read that fails with a 429, a 5xx or a network error says
         nothing about the job, so polling continues until `timeout`.
         """
-        if on_progress is None:
-            on_progress = ProgressPrinter()
-
-        started = time.monotonic()
-        deadline = started + timeout
-        seen = False
-        last_state = QUEUED_STATUS
-        failed_since: Optional[float] = None
-        read_error: Optional[Exception] = None
-
+        watcher = JobWatcher(
+            job_id, interval, timeout, on_progress, startup_grace, failed_grace
+        )
         while True:
-            status: Optional[JobStatus] = None
             try:
-                status = self.get_job_status(job_id)
-            except httpx.TransportError as exc:
-                read_error = exc
-            except UnboxAIError as exc:
-                not_started = (
-                    exc.status_code == 404
-                    and not seen
-                    and time.monotonic() - started < startup_grace
-                )
-                if not_started:
-                    status = JobStatus(job_id=job_id, status=QUEUED_STATUS)
-                elif exc.status_code in RETRYABLE_STATUS_CODES:
-                    read_error = exc
-                else:
-                    raise
-            else:
-                seen = True
-                read_error = None
-
-            if status is not None:
-                on_progress(status)
-                last_state = status.status.lower()
-
-                if last_state == READY_STATUS:
-                    return status
-
-                if last_state == FAILED_STATUS:
-                    now = time.monotonic()
-                    failed_since = now if failed_since is None else failed_since
-                    if status.error or now - failed_since >= failed_grace:
-                        reason = f": {status.error}" if status.error else ""
-                        raise UnboxAIError(
-                            f"Embed job {job_id} failed{reason}",
-                            response=status.model_dump(),
-                        )
-                else:
-                    failed_since = None
-
-            if time.monotonic() + interval > deadline:
-                message = f"Embed job {job_id} still '{last_state}' after {timeout:g}s"
-                if read_error:
-                    message += f"; last status read failed: {read_error}"
-                raise UnboxAIError(message)
-
+                status = watcher.read(self.get_job_status(job_id))
+            except (httpx.TransportError, UnboxAIError) as exc:
+                status = watcher.read_failed(exc)
+            if (ready := watcher.check(status)) is not None:
+                return ready
             time.sleep(interval)
 
     def get_similar_items(
@@ -255,23 +317,12 @@ class Catalogs:
         filters: Optional[dict] = None,
         headers: Optional[dict] = None,
     ) -> UnboxAIResponse:
-        req = SimilarItemsRequest(
-            item_id=item_id,
-            store_id=catalog_id,
-            limit=limit,
-            offset=offset,
-            filters=filters or {},
-        )
-
         response = self._client.post(
             "/vector/similar_products",
-            json=req.model_dump(mode="json"),
+            json=similar_items_body(item_id, catalog_id, limit, offset, filters),
             headers=headers,
         )
-
-        data = handle_response(response)
-
-        return UnboxAIResponse(**data)
+        return UnboxAIResponse(**handle_response(response))
 
     def get_similar_products(
         self, product_id: str, *args: Any, **kwargs: Any
@@ -284,10 +335,88 @@ class Catalogs:
         return self.get_similar_items(product_id, *args, **kwargs)
 
     def get_umap(self, *, catalog_id: str):
-        response = self._client.get(
-            f"/{catalog_id}/umap",
-        )
+        return umap_page(self._client.get(f"/{catalog_id}/umap"))
 
-        if response.is_error:
-            handle_response(response)
-        return response.text
+
+class AsyncCatalogs:
+    """The async counterpart of `Catalogs`; see it for what each method does."""
+
+    def __init__(self, http_client: httpx.AsyncClient):
+        self._client = http_client
+
+    async def embed(
+        self,
+        path: Path,
+        wait: bool = False,
+        interval: float = 5.0,
+        timeout: float = 600.0,
+        on_progress: Optional[Callable[[JobStatus], None]] = None,
+        startup_grace: float = 120.0,
+        reference_time: Optional[datetime | str] = None,
+    ) -> EmbedJobDetails:
+        form = upload_form(path, reference_time)
+
+        with open(path, "rb") as f:
+            response = await self._client.post(
+                "/embed-catalog",
+                files={"file": (path.name, f, "application/octet-stream")},
+                data=form,
+            )
+
+        job = EmbedJobDetails(**handle_response(response))
+
+        if wait:
+            await self.wait_for_job(
+                job.job_id,
+                interval=interval,
+                timeout=timeout,
+                on_progress=on_progress,
+                startup_grace=startup_grace,
+            )
+
+        return job
+
+    async def get_job_status(self, job_id: str) -> JobStatus:
+        response = await self._client.get(f"/embed-catalog/{job_id}")
+        return JobStatus(**handle_response(response))
+
+    async def wait_for_job(
+        self,
+        job_id: str,
+        interval: float = 5.0,
+        timeout: float = 600.0,
+        on_progress: Optional[Callable[[JobStatus], None]] = None,
+        startup_grace: float = 120.0,
+        failed_grace: float = 180.0,
+    ) -> JobStatus:
+        watcher = JobWatcher(
+            job_id, interval, timeout, on_progress, startup_grace, failed_grace
+        )
+        while True:
+            try:
+                status = watcher.read(await self.get_job_status(job_id))
+            except (httpx.TransportError, UnboxAIError) as exc:
+                status = watcher.read_failed(exc)
+            if (ready := watcher.check(status)) is not None:
+                return ready
+            await asyncio.sleep(interval)
+
+    async def get_similar_items(
+        self,
+        item_id: str,
+        limit: int = 10,
+        offset: int = 0,
+        *,
+        catalog_id: str,
+        filters: Optional[dict] = None,
+        headers: Optional[dict] = None,
+    ) -> UnboxAIResponse:
+        response = await self._client.post(
+            "/vector/similar_products",
+            json=similar_items_body(item_id, catalog_id, limit, offset, filters),
+            headers=headers,
+        )
+        return UnboxAIResponse(**handle_response(response))
+
+    async def get_umap(self, *, catalog_id: str) -> str:
+        return umap_page(await self._client.get(f"/{catalog_id}/umap"))

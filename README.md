@@ -39,6 +39,28 @@ print(client.similar_items(res.items[0].id).names)
 
 `complete` takes the history and returns the items most likely to come next. Each result in `res.items` has an `id`, a `score` and the catalog row in `data`; `res.to_pandas()` gives a DataFrame if pandas is installed.
 
+### Async
+
+In asyncio code, such as a FastAPI or aiohttp server, use `AsyncUnboxAIClient`. It takes the same arguments and has the same methods, awaited, so a call never blocks the event loop and many calls can run at once:
+
+```python
+import asyncio
+
+from behaviorgpt import AsyncUnboxAIClient, Search
+
+async def main():
+    async with AsyncUnboxAIClient(market="us") as client:
+        shoes, gloves = await asyncio.gather(
+            client.complete([Search("running shoes")], limit=5),
+            client.complete([Search("gloves")], limit=5),
+        )
+        print(shoes.names, gloves.names)
+
+asyncio.run(main())
+```
+
+Create one client and reuse it, for example for the lifetime of your server: `async with` closes its connections at the end, or call `await client.aclose()`. `embed(..., wait=True)` waits for the job without blocking other requests.
+
 ## How it works
 
 - **One call, many features.** Every request asks the same question: given what this person did, which items are they most likely to act on next? The history picks the feature. End it with a `Search` for search results, with a `View` for "more like this", with an `Order` for what is bought next; leave it empty for a cold start.

@@ -10,10 +10,10 @@ from uuid import uuid4
 import httpx
 
 from behaviorgpt._exceptions import AuthenticationError
-from behaviorgpt.resources.catalogs import Catalogs
-from behaviorgpt.resources.recommendations import Recommender
+from behaviorgpt.resources.catalogs import AsyncCatalogs, Catalogs
+from behaviorgpt.resources.recommendations import AsyncRecommender, Recommender
 from behaviorgpt.resources.requests import UnboxAIRequester
-from behaviorgpt.resources.search import Searcher
+from behaviorgpt.resources.search import AsyncSearcher, Searcher
 from behaviorgpt.types import (
     AddToCart,
     CartItem,
@@ -24,6 +24,7 @@ from behaviorgpt.types import (
     Order,
     Search,
     SessionEvent,
+    UnboxAIRequest,
     UnboxAIResponse,
     UserEvent,
     UserHistoryInput,
@@ -32,18 +33,20 @@ from behaviorgpt.types import (
 # An embed upload streams the whole parquet, and the API answers only once the
 # file is stored and queued: httpx's 5 s default is too short for both.
 DEFAULT_HTTP_TIMEOUT = httpx.Timeout(120.0, connect=10.0, write=300.0)
+DEFAULT_BASE_URL = "https://behaviorgpt-northeurope.api.unboxai.com/v1"
 
 
-class UnboxAIClient:
+class _BaseClient:
+    """What the sync and the async client share: settings and request building."""
+
     def __init__(
         self,
         market: str,
         *,
         timezone: str = "UTC",
         api_key: Optional[str] = None,
-        base_url: str = "https://behaviorgpt-northeurope.api.unboxai.com/v1",
+        base_url: str = DEFAULT_BASE_URL,
         default_catalog_id: str = "retail_catalog",
-        http_timeout: float | httpx.Timeout = DEFAULT_HTTP_TIMEOUT,
     ):
         self.api_key = api_key or os.environ.get("UNBOXAI_API_KEY")
         if not self.api_key:
@@ -53,32 +56,26 @@ class UnboxAIClient:
         self.base_url = base_url
         self.default_catalog_id = default_catalog_id
 
-        headers = {"x-api-key": self.api_key}
-        self._http_client = httpx.Client(
-            base_url=self.base_url, headers=headers, timeout=http_timeout
-        )
-
         self.domains = Domains(market=market)
         self.timezone = timezone
 
         self.requester = UnboxAIRequester(domains=self.domains, timezone=self.timezone)
 
-        self.recommendations = Recommender(self._http_client)
-        self.search = Searcher(self._http_client)
-        self.catalogs = Catalogs(self._http_client)
+    def _catalog_headers(self, catalog_id: Optional[str]) -> tuple[str, dict]:
+        active_catalog: str = catalog_id or self.default_catalog_id
+        return active_catalog, {"x-catalog-id": active_catalog}
 
-    def complete(
+    def _complete_request(
         self,
         history: UserHistoryInput,
-        limit: int = 10,
-        offset: int = 0,
-        *,
-        catalog_id: Optional[str] = None,
-        filters: Optional[dict[str, Any]] = None,
-        register_event: bool = False,
-    ) -> UnboxAIResponse:
-        active_catalog: str = catalog_id or self.default_catalog_id
-        request_headers = {"x-catalog-id": active_catalog}
+        limit: int,
+        offset: int,
+        catalog_id: Optional[str],
+        filters: Optional[dict[str, Any]],
+        register_event: bool,
+    ) -> tuple[bool, UnboxAIRequest, dict]:
+        """The request `complete` sends, whether it goes to search, and its headers."""
+        active_catalog, request_headers = self._catalog_headers(catalog_id)
 
         history_events = self.__from_sequence(active_catalog, history)
         last_event = self._get_last_event(history)
@@ -93,7 +90,7 @@ class UnboxAIClient:
                 filters=filters,
                 register_event=register_event,
             )
-            return self.search.create(payload=req, headers=request_headers)
+            return True, req, request_headers
 
         req = self.requester.make(
             history=history_events,
@@ -103,89 +100,7 @@ class UnboxAIClient:
             filters=filters,
             register_event=register_event,
         )
-        return self.recommendations.create(payload=req, headers=request_headers)
-
-    def embed(
-        self,
-        path: Path | str,
-        wait: bool = False,
-        interval: float = 5.0,
-        timeout: float = 600.0,
-        on_progress: Optional[Callable[[JobStatus], None]] = None,
-        startup_grace: float = 120.0,
-        reference_time: Optional[datetime | str] = None,
-    ) -> EmbedJobDetails:
-        """Upload and embed a catalog parquet.
-
-        Pass `wait=True` to block until the embed job finishes. While waiting,
-        each new job state is printed once; pass `on_progress` to render
-        progress yourself, or `on_progress=lambda _: None` for silence.
-
-        `reference_time` is when item ages and sales are measured; the upload
-        time by default.
-        """
-        if isinstance(path, str):
-            path = Path(path)
-
-        return self.catalogs.embed(
-            path,
-            wait=wait,
-            interval=interval,
-            timeout=timeout,
-            on_progress=on_progress,
-            startup_grace=startup_grace,
-            reference_time=reference_time,
-        )
-
-    def job_status(self, job_id: str) -> JobStatus:
-        return self.catalogs.get_job_status(job_id)
-
-    def similar_items(
-        self,
-        item_id: str,
-        limit: int = 10,
-        offset: int = 0,
-        *,
-        catalog_id: Optional[str] = None,
-    ) -> UnboxAIResponse:
-        active_catalog: str = catalog_id or self.default_catalog_id
-        request_headers = {"x-catalog-id": active_catalog}
-
-        return self.catalogs.get_similar_items(
-            item_id,
-            catalog_id=active_catalog,
-            limit=limit,
-            offset=offset,
-            headers=request_headers,
-        )
-
-    def similar_products(
-        self, product_id: str, *args: Any, **kwargs: Any
-    ) -> UnboxAIResponse:
-        warnings.warn(
-            "`similar_products` is deprecated, use `similar_items`",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.similar_items(product_id, *args, **kwargs)
-
-    def random_item(self, catalog_id: Optional[str] = None, window: int = 100) -> Item:
-        """One item from the embedded catalog, handy when
-        you have no item id at hand.
-        """
-        top = self.complete(history=[], catalog_id=catalog_id, limit=window)
-        if not top.items:
-            active = catalog_id or self.default_catalog_id
-            raise ValueError(f"catalog {active!r} returned no items")
-        return random.choice(top.items)
-
-    def random_product(self, *args: Any, **kwargs: Any) -> Item:
-        warnings.warn(
-            "`random_product` is deprecated, use `random_item`",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.random_item(*args, **kwargs)
+        return False, req, request_headers
 
     def __from_sequence(
         self, catalog_id: str, context: UserHistoryInput
@@ -238,18 +153,6 @@ class UnboxAIClient:
 
         return events
 
-    def umap(self, *, catalog_id: Optional[str] = None):
-        """The catalog's UMAP, a 2D map of its items, as an HTML page.
-
-        Maps exist only for catalogs of up to 100,000 items, and appear within
-        about a minute after the catalog is ready: laying out more items than
-        that does not fit in the embedding worker's memory, so larger catalogs
-        (such as the shared `retail_catalog`) never get one. A missing map
-        raises `UnboxAIError` with status 404 and says which case applies.
-        """
-        active_catalog: str = catalog_id or self.default_catalog_id
-        return self.catalogs.get_umap(catalog_id=active_catalog)
-
     def __to_session_evt(
         self, event: UserEvent, session_id: str, catalog_id: str, timestamp: datetime
     ) -> SessionEvent:
@@ -273,3 +176,256 @@ class UnboxAIClient:
         else:
             history_1d = cast(Sequence[UserEvent], history)
             return history_1d[-1]
+
+
+class UnboxAIClient(_BaseClient):
+    def __init__(
+        self,
+        market: str,
+        *,
+        timezone: str = "UTC",
+        api_key: Optional[str] = None,
+        base_url: str = DEFAULT_BASE_URL,
+        default_catalog_id: str = "retail_catalog",
+        http_timeout: float | httpx.Timeout = DEFAULT_HTTP_TIMEOUT,
+    ):
+        super().__init__(
+            market,
+            timezone=timezone,
+            api_key=api_key,
+            base_url=base_url,
+            default_catalog_id=default_catalog_id,
+        )
+
+        headers = {"x-api-key": self.api_key}
+        self._http_client = httpx.Client(
+            base_url=self.base_url, headers=headers, timeout=http_timeout
+        )
+
+        self.recommendations = Recommender(self._http_client)
+        self.search = Searcher(self._http_client)
+        self.catalogs = Catalogs(self._http_client)
+
+    def complete(
+        self,
+        history: UserHistoryInput,
+        limit: int = 10,
+        offset: int = 0,
+        *,
+        catalog_id: Optional[str] = None,
+        filters: Optional[dict[str, Any]] = None,
+        register_event: bool = False,
+    ) -> UnboxAIResponse:
+        is_search, req, headers = self._complete_request(
+            history, limit, offset, catalog_id, filters, register_event
+        )
+        endpoint = self.search if is_search else self.recommendations
+        return endpoint.create(payload=req, headers=headers)
+
+    def embed(
+        self,
+        path: Path | str,
+        wait: bool = False,
+        interval: float = 5.0,
+        timeout: float = 600.0,
+        on_progress: Optional[Callable[[JobStatus], None]] = None,
+        startup_grace: float = 120.0,
+        reference_time: Optional[datetime | str] = None,
+    ) -> EmbedJobDetails:
+        """Upload and embed a catalog parquet.
+
+        Pass `wait=True` to block until the embed job finishes. While waiting,
+        each new job state is printed once; pass `on_progress` to render
+        progress yourself, or `on_progress=lambda _: None` for silence.
+
+        `reference_time` is when item ages and sales are measured; the upload
+        time by default.
+        """
+        return self.catalogs.embed(
+            Path(path),
+            wait=wait,
+            interval=interval,
+            timeout=timeout,
+            on_progress=on_progress,
+            startup_grace=startup_grace,
+            reference_time=reference_time,
+        )
+
+    def job_status(self, job_id: str) -> JobStatus:
+        return self.catalogs.get_job_status(job_id)
+
+    def similar_items(
+        self,
+        item_id: str,
+        limit: int = 10,
+        offset: int = 0,
+        *,
+        catalog_id: Optional[str] = None,
+    ) -> UnboxAIResponse:
+        active_catalog, request_headers = self._catalog_headers(catalog_id)
+        return self.catalogs.get_similar_items(
+            item_id,
+            catalog_id=active_catalog,
+            limit=limit,
+            offset=offset,
+            headers=request_headers,
+        )
+
+    def similar_products(
+        self, product_id: str, *args: Any, **kwargs: Any
+    ) -> UnboxAIResponse:
+        warnings.warn(
+            "`similar_products` is deprecated, use `similar_items`",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.similar_items(product_id, *args, **kwargs)
+
+    def random_item(self, catalog_id: Optional[str] = None, window: int = 100) -> Item:
+        """One item from the embedded catalog, handy when
+        you have no item id at hand.
+        """
+        top = self.complete(history=[], catalog_id=catalog_id, limit=window)
+        return _pick_random(top, catalog_id or self.default_catalog_id)
+
+    def random_product(self, *args: Any, **kwargs: Any) -> Item:
+        warnings.warn(
+            "`random_product` is deprecated, use `random_item`",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.random_item(*args, **kwargs)
+
+    def umap(self, *, catalog_id: Optional[str] = None):
+        """The catalog's UMAP, a 2D map of its items, as an HTML page.
+
+        Maps exist only for catalogs of up to 100,000 items, and appear within
+        about a minute after the catalog is ready: laying out more items than
+        that does not fit in the embedding worker's memory, so larger catalogs
+        (such as the shared `retail_catalog`) never get one. A missing map
+        raises `UnboxAIError` with status 404 and says which case applies.
+        """
+        active_catalog: str = catalog_id or self.default_catalog_id
+        return self.catalogs.get_umap(catalog_id=active_catalog)
+
+
+class AsyncUnboxAIClient(_BaseClient):
+    """`UnboxAIClient` for asyncio code: the same methods, awaited.
+
+    Use it as `async with AsyncUnboxAIClient(...) as client:`, or call
+    `await client.aclose()` when done, to release its connections.
+    """
+
+    def __init__(
+        self,
+        market: str,
+        *,
+        timezone: str = "UTC",
+        api_key: Optional[str] = None,
+        base_url: str = DEFAULT_BASE_URL,
+        default_catalog_id: str = "retail_catalog",
+        http_timeout: float | httpx.Timeout = DEFAULT_HTTP_TIMEOUT,
+    ):
+        super().__init__(
+            market,
+            timezone=timezone,
+            api_key=api_key,
+            base_url=base_url,
+            default_catalog_id=default_catalog_id,
+        )
+
+        headers = {"x-api-key": self.api_key}
+        self._http_client = httpx.AsyncClient(
+            base_url=self.base_url, headers=headers, timeout=http_timeout
+        )
+
+        self.recommendations = AsyncRecommender(self._http_client)
+        self.search = AsyncSearcher(self._http_client)
+        self.catalogs = AsyncCatalogs(self._http_client)
+
+    async def __aenter__(self) -> "AsyncUnboxAIClient":
+        return self
+
+    async def __aexit__(self, *exc_info: Any) -> None:
+        await self.aclose()
+
+    async def aclose(self) -> None:
+        await self._http_client.aclose()
+
+    async def complete(
+        self,
+        history: UserHistoryInput,
+        limit: int = 10,
+        offset: int = 0,
+        *,
+        catalog_id: Optional[str] = None,
+        filters: Optional[dict[str, Any]] = None,
+        register_event: bool = False,
+    ) -> UnboxAIResponse:
+        is_search, req, headers = self._complete_request(
+            history, limit, offset, catalog_id, filters, register_event
+        )
+        endpoint = self.search if is_search else self.recommendations
+        return await endpoint.create(payload=req, headers=headers)
+
+    async def embed(
+        self,
+        path: Path | str,
+        wait: bool = False,
+        interval: float = 5.0,
+        timeout: float = 600.0,
+        on_progress: Optional[Callable[[JobStatus], None]] = None,
+        startup_grace: float = 120.0,
+        reference_time: Optional[datetime | str] = None,
+    ) -> EmbedJobDetails:
+        """Upload and embed a catalog parquet; see `UnboxAIClient.embed`.
+
+        With `wait=True` it waits without blocking the event loop.
+        """
+        return await self.catalogs.embed(
+            Path(path),
+            wait=wait,
+            interval=interval,
+            timeout=timeout,
+            on_progress=on_progress,
+            startup_grace=startup_grace,
+            reference_time=reference_time,
+        )
+
+    async def job_status(self, job_id: str) -> JobStatus:
+        return await self.catalogs.get_job_status(job_id)
+
+    async def similar_items(
+        self,
+        item_id: str,
+        limit: int = 10,
+        offset: int = 0,
+        *,
+        catalog_id: Optional[str] = None,
+    ) -> UnboxAIResponse:
+        active_catalog, request_headers = self._catalog_headers(catalog_id)
+        return await self.catalogs.get_similar_items(
+            item_id,
+            catalog_id=active_catalog,
+            limit=limit,
+            offset=offset,
+            headers=request_headers,
+        )
+
+    async def random_item(
+        self, catalog_id: Optional[str] = None, window: int = 100
+    ) -> Item:
+        """One item from the embedded catalog; see `UnboxAIClient.random_item`."""
+        top = await self.complete(history=[], catalog_id=catalog_id, limit=window)
+        return _pick_random(top, catalog_id or self.default_catalog_id)
+
+    async def umap(self, *, catalog_id: Optional[str] = None) -> str:
+        """The catalog's UMAP as an HTML page; see `UnboxAIClient.umap`."""
+        active_catalog: str = catalog_id or self.default_catalog_id
+        return await self.catalogs.get_umap(catalog_id=active_catalog)
+
+
+def _pick_random(top: UnboxAIResponse, catalog_id: str) -> Item:
+    if not top.items:
+        raise ValueError(f"catalog {catalog_id!r} returned no items")
+    return random.choice(top.items)
