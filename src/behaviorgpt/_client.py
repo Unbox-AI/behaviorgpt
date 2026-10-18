@@ -18,6 +18,7 @@ from behaviorgpt.types import (
     AddItemsJobDetails,
     AddToCart,
     CartItem,
+    CatalogSummary,
     Domains,
     EmbedJobDetails,
     Item,
@@ -290,6 +291,22 @@ class UnboxAIClient(_BaseClient):
     def job_status(self, job_id: str) -> JobStatus:
         return self.catalogs.get_job_status(job_id)
 
+    def list_catalogs(self) -> list[CatalogSummary]:
+        """The catalogs this key can query: its own, in any status, and the
+        shared ones that are ready. `owned` marks the key's own."""
+        return self.catalogs.list_catalogs()
+
+    def delete_catalog(self, catalog_id: str) -> None:
+        """Delete one of this key's catalogs, its items and its index, and
+        free its slot. This cannot be undone.
+
+        A catalog that is not this key's raises `UnboxAIError` with status
+        404, the same as an unknown one. While an embed or `add_items` job runs
+        for the catalog, it raises with status 409; delete once the job is
+        ready or failed.
+        """
+        self.catalogs.delete_catalog(catalog_id)
+
     def similar_items(
         self,
         item_id: str,
@@ -453,6 +470,14 @@ class AsyncUnboxAIClient(_BaseClient):
 
     async def job_status(self, job_id: str) -> JobStatus:
         return await self.catalogs.get_job_status(job_id)
+
+    async def list_catalogs(self) -> list[CatalogSummary]:
+        """See `UnboxAIClient.list_catalogs`."""
+        return await self.catalogs.list_catalogs()
+
+    async def delete_catalog(self, catalog_id: str) -> None:
+        """See `UnboxAIClient.delete_catalog`."""
+        await self.catalogs.delete_catalog(catalog_id)
 
     async def similar_items(
         self,

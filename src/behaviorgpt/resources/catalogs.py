@@ -4,6 +4,7 @@ import warnings
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Callable, Optional
+from urllib.parse import quote
 
 import httpx
 import pyarrow as pa
@@ -13,6 +14,7 @@ from behaviorgpt._exceptions import UnboxAIError
 from behaviorgpt.resources._shared import handle_response
 from behaviorgpt.types import (
     AddItemsJobDetails,
+    CatalogSummary,
     EmbedJobDetails,
     JobStatus,
     SimilarItemsRequest,
@@ -131,6 +133,16 @@ def items_path(catalog_id: str) -> str:
     if not catalog_id:
         raise ValueError("catalog_id is required to add items")
     return f"/catalogs/{catalog_id}/items"
+
+
+def catalog_path(catalog_id: str) -> str:
+    if not catalog_id:
+        raise ValueError("catalog_id is required to delete a catalog")
+    return f"/catalogs/{quote(catalog_id, safe='')}"
+
+
+def catalog_summaries(response: httpx.Response) -> list[CatalogSummary]:
+    return [CatalogSummary(**c) for c in handle_response(response)["catalogs"]]
 
 
 def similar_items_body(
@@ -405,6 +417,12 @@ class Catalogs:
     def get_umap(self, *, catalog_id: str):
         return umap_page(self._client.get(f"/{catalog_id}/umap"))
 
+    def list_catalogs(self) -> list[CatalogSummary]:
+        return catalog_summaries(self._client.get("/catalogs"))
+
+    def delete_catalog(self, catalog_id: str) -> None:
+        handle_response(self._client.delete(catalog_path(catalog_id)))
+
 
 class AsyncCatalogs:
     """The async counterpart of `Catalogs`; see it for what each method does."""
@@ -520,3 +538,9 @@ class AsyncCatalogs:
 
     async def get_umap(self, *, catalog_id: str) -> str:
         return umap_page(await self._client.get(f"/{catalog_id}/umap"))
+
+    async def list_catalogs(self) -> list[CatalogSummary]:
+        return catalog_summaries(await self._client.get("/catalogs"))
+
+    async def delete_catalog(self, catalog_id: str) -> None:
+        handle_response(await self._client.delete(catalog_path(catalog_id)))
