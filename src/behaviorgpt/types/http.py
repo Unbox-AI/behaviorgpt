@@ -148,6 +148,17 @@ class AddItemsJobDetails(EmbedJobDetails):
     products: int
 
 
+class CatalogSummary(BaseModel):
+    catalog_id: str
+    # display label derived from the uploaded file name, server-side
+    catalog_name: str
+    # 'pending', 'ready' or 'failed'; shared catalogs are listed only when ready
+    status: str
+    # uploaded with this API key, so it counts against the key's catalog slots
+    # and this key can delete it
+    owned: bool
+
+
 class SimilarItemsRequest(BaseModel):
     model_config = ConfigDict(serialize_by_alias=True)
 

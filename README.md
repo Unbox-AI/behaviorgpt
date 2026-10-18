@@ -106,7 +106,7 @@ The model can only return items it knows about. Out of the box the client uses `
 
 - [`docs/catalog-format.md`](https://github.com/Unbox-AI/behaviorgpt/blob/main/docs/catalog-format.md) lists the required columns and types.
 - A catalog can hold at most 100,000 items.
-- Each API key can hold 2 catalogs. The file name is the catalog's name: uploading a file with the same name again refreshes that catalog and keeps its `catalog_id`, and a new name takes one of the 2 slots. A failed upload does not use up a slot. Once both slots are in use, an upload under a new name is refused; to remove a catalog or raise the limit, contact alexander@unboxai.com.
+- Each API key can hold 2 catalogs. The file name is the catalog's name: uploading a file with the same name again refreshes that catalog and keeps its `catalog_id`, and a new name takes one of the 2 slots. A failed upload does not use up a slot. Once both slots are in use, an upload under a new name is refused until you delete one of them (see below); to raise the limit, contact alexander@unboxai.com.
 - [`examples/sample_catalog.csv`](https://github.com/Unbox-AI/behaviorgpt/blob/main/examples/sample_catalog.csv) is an example only, showing what each column should contain. Your own file will look different depending on your catalog, and it has to be converted to the parquet structure described in the format doc before upload.
 
 ```python
@@ -128,6 +128,19 @@ client.add_items("new_items.parquet", catalog_id=job.catalog_id, wait=True)
 - One `add_items` job runs per catalog at a time, and the catalog cannot be refreshed or deleted while it runs.
 - Uploading the catalog's file again with `embed` replaces the whole catalog, added items included. Put them in that file too to keep them.
 - A catalog embedded before `add_items` existed needs one more full upload before items can be added to it.
+
+### Listing and deleting catalogs
+
+```python
+for c in client.list_catalogs():
+    print(c.catalog_id, c.catalog_name, c.status, c.owned)
+
+client.delete_catalog("cat_...")
+```
+
+- `list_catalogs()` returns your own catalogs, in any status, and the shared ones that are ready. `owned` marks your own.
+- `delete_catalog()` removes one of your catalogs with its items and frees its slot. It cannot be undone.
+- Deleting another key's catalog fails with status 404, the same as an unknown id. While an `embed` or `add_items` job runs for the catalog, deleting fails with status 409; try again once the job is ready or failed.
 
 If mapping your data to the format is hard, open a coding agent in this directory and ask it to embed your catalog. The repo ships a skill at [`.claude/skills/embed-catalog/SKILL.md`](https://github.com/Unbox-AI/behaviorgpt/blob/main/.claude/skills/embed-catalog/SKILL.md) that walks the agent through mapping your columns, building and validating the parquet, checking image URLs, and uploading. Claude Code picks it up automatically; for other agents, point them at that file.
 
