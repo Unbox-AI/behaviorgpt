@@ -47,3 +47,9 @@ def test_naive_timestamp_is_refused():
 def test_candidate_count_out_of_range_is_refused(count):
     with pytest.raises(ValidationError):
         sent(num_candidates=count)
+
+
+@pytest.mark.parametrize("count", [0, 11])
+def test_trailing_search_count_out_of_range_is_refused(count):
+    with pytest.raises(ValidationError):
+        sent(max_trailing_searches=count)

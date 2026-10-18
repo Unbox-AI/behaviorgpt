@@ -36,6 +36,7 @@ from behaviorgpt.types import (
 # file is stored and queued: httpx's 5 s default is too short for both.
 DEFAULT_HTTP_TIMEOUT = httpx.Timeout(120.0, connect=10.0, write=300.0)
 DEFAULT_BASE_URL = "https://behaviorgpt-northeurope.api.unboxai.com/v1"
+DEFAULT_TRAILING_SEARCHES = 3
 
 
 class _BaseClient:
@@ -75,6 +76,7 @@ class _BaseClient:
         catalog_id: Optional[str],
         filters: Optional[dict[str, Any]],
         register_event: bool,
+        max_trailing_searches: int = DEFAULT_TRAILING_SEARCHES,
     ) -> tuple[bool, UnboxAIRequest, dict]:
         """The request `complete` sends, whether it goes to search, and its headers."""
         active_catalog, request_headers = self._catalog_headers(catalog_id)
@@ -91,6 +93,7 @@ class _BaseClient:
                 offset=offset,
                 filters=filters,
                 register_event=register_event,
+                max_trailing_searches=max_trailing_searches,
             )
             return True, req, request_headers
 
@@ -217,9 +220,22 @@ class UnboxAIClient(_BaseClient):
         catalog_id: Optional[str] = None,
         filters: Optional[dict[str, Any]] = None,
         register_event: bool = False,
+        max_trailing_searches: int = DEFAULT_TRAILING_SEARCHES,
     ) -> UnboxAIResponse:
+        """Rank the items most likely to come after `history`.
+
+        When the history ends in searches, up to `max_trailing_searches` of
+        them in a row, the query included, reach the model, so `nike` then
+        `shoes` reads as one intent.
+        """
         is_search, req, headers = self._complete_request(
-            history, limit, offset, catalog_id, filters, register_event
+            history,
+            limit,
+            offset,
+            catalog_id,
+            filters,
+            register_event,
+            max_trailing_searches,
         )
         endpoint = self.search if is_search else self.recommendations
         return endpoint.create(payload=req, headers=headers)
@@ -414,9 +430,18 @@ class AsyncUnboxAIClient(_BaseClient):
         catalog_id: Optional[str] = None,
         filters: Optional[dict[str, Any]] = None,
         register_event: bool = False,
+        max_trailing_searches: int = DEFAULT_TRAILING_SEARCHES,
     ) -> UnboxAIResponse:
+        """Rank the items most likely to come after `history`; see
+        `UnboxAIClient.complete`."""
         is_search, req, headers = self._complete_request(
-            history, limit, offset, catalog_id, filters, register_event
+            history,
+            limit,
+            offset,
+            catalog_id,
+            filters,
+            register_event,
+            max_trailing_searches,
         )
         endpoint = self.search if is_search else self.recommendations
         return await endpoint.create(payload=req, headers=headers)
