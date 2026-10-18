@@ -1,3 +1,4 @@
+import ast
 import asyncio
 import time
 import warnings
@@ -8,6 +9,8 @@ from urllib.parse import quote
 
 import httpx
 import pyarrow as pa
+import pyarrow.compute as pc
+import pyarrow.csv as pa_csv
 import pyarrow.parquet as pq
 
 from behaviorgpt._exceptions import UnboxAIError
@@ -93,6 +96,79 @@ def check_catalog_schema(path: Path) -> None:
         raise UnboxAIError(
             f"{path} does not match the catalog format:\n  " + "\n  ".join(problems)
         )
+
+
+LIST_COLUMNS: dict[str, type] = {
+    "sales_since": int,
+    "search_keywords": str,
+    "keywords": str,
+}
+
+
+def _parse_list(column: str, cell: Optional[str]) -> Optional[list]:
+    """`[1, 2]` or `a, b` as a list of the column's item type; empty is null."""
+    if cell is None or not cell.strip():
+        return None
+    cast = LIST_COLUMNS[column]
+    try:
+        items = (
+            ast.literal_eval(cell) if cell.strip().startswith("[") else cell.split(",")
+        )
+        return [cast(str(item).strip()) for item in items if str(item).strip()]
+    except (ValueError, SyntaxError) as exc:
+        raise UnboxAIError(f"{column}: cannot read {cell!r} as a list") from exc
+
+
+def catalog_from_csv(
+    csv_path: Path | str, parquet_path: Optional[Path | str] = None
+) -> Path:
+    """Convert a CSV with the columns of docs/catalog-format.md to a catalog
+    parquet, check it and return its path.
+
+    Every cell is read as text, so prices keep their formatting. List columns
+    take `[1, 2]` or `a, b`. Empty cells, and columns the CSV lacks, become
+    null; other columns are left out. Duplicate ids keep their first row. The
+    parquet goes next to the CSV unless `parquet_path` is given; its file name
+    becomes the catalog's name.
+    """
+    csv_path = Path(csv_path)
+    out = Path(parquet_path) if parquet_path else csv_path.with_suffix(".parquet")
+    try:
+        table = pa_csv.read_csv(
+            csv_path,
+            convert_options=pa_csv.ConvertOptions(
+                column_types={column: pa.string() for column in CATALOG_SCHEMA},
+                include_columns=list(CATALOG_SCHEMA),
+                include_missing_columns=True,
+                strings_can_be_null=True,
+            ),
+        )
+    except pa.ArrowInvalid as exc:
+        raise UnboxAIError(f"{csv_path} is not a readable CSV file: {exc}") from exc
+
+    first_rows = {}
+    for row, item_id in enumerate(table.column("id").to_pylist()):
+        first_rows.setdefault(item_id, row)
+    table = table.take(sorted(first_rows.values()))
+
+    columns = {}
+    for column, expected in CATALOG_SCHEMA.items():
+        values = table.column(column)
+        if column in LIST_COLUMNS:
+            values = pa.array(
+                [_parse_list(column, cell) for cell in values.to_pylist()],
+                type=expected,
+            )
+        elif expected != pa.string():
+            try:
+                values = pc.cast(values, expected)
+            except pa.ArrowInvalid as exc:
+                raise UnboxAIError(f"{column}: expected {expected}: {exc}") from exc
+        columns[column] = values
+
+    pq.write_table(pa.table(columns, schema=pa.schema(CATALOG_SCHEMA)), out)
+    check_catalog_schema(out)
+    return out
 
 
 def format_reference_time(reference_time: datetime | str) -> str:

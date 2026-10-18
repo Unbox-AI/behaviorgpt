@@ -97,7 +97,7 @@ Embed a small slice first (a few hundred rows) to confirm the images are fetched
 
 ## Example catalog
 
-`examples/sample_catalog.csv` has 100 rows with the correct column names and realistic values. It exists to be read: open it to see what each column should contain. It cannot be uploaded as-is, because CSV carries no types. Read naively, three places come out wrong:
+`examples/sample_catalog.csv` has 100 rows with the correct column names and realistic values. It exists to be read: open it to see what each column should contain. It cannot be uploaded as-is, because CSV carries no types; convert it with `catalog_from_csv` (below). Read naively, three places come out wrong:
 
 | Column | In the CSV | Parquet requires |
 |---|---|---|
@@ -109,43 +109,21 @@ Every other column is already a string or an integer and passes through unchange
 
 ## From CSV to parquet
 
-Recipe for turning a CSV with the column names above into an accepted parquet. Written so a coding agent can follow it directly.
-
-1. Read every column as text. Do not let the CSV reader guess types.
-2. Parse list columns into real lists: `sales_since` to integers, `search_keywords` and `keywords` to strings. Empty cells become null. A string such as `"['a', 'b']"` is not a list.
-3. Cast `timestamp` and `frequency` to int64. Leave `price` as a string.
-4. Drop duplicate `id` rows. The server silently keeps only the first.
-5. Build the table with the explicit schema shipped in the package, so types are forced rather than inferred, and run the package's own check before uploading.
+`catalog_from_csv` turns a CSV with the column names above into an accepted parquet, checks it and returns its path. The parquet goes next to the CSV unless you pass a second path, and its file name becomes the catalog's name.
 
 ```python
-import ast
-import pandas as pd
-import pyarrow as pa
-import pyarrow.parquet as pq
-from behaviorgpt.resources.catalogs import CATALOG_SCHEMA, check_catalog_schema
+from behaviorgpt import catalog_from_csv
 
-CSV_PATH = "examples/sample_catalog.csv"
-CATALOG_PATH = "examples/sample_catalog.parquet"
-
-df = pd.read_csv(CSV_PATH, dtype=str)  # step 1
-
-def to_list(cell, cast):
-    """'[1, 2]' or 'a, b' -> list; empty -> None."""
-    if pd.isna(cell) or not cell.strip():
-        return None
-    items = ast.literal_eval(cell) if cell.strip().startswith("[") else cell.split(",")
-    return [cast(str(x).strip()) for x in items]
-
-df["sales_since"] = df["sales_since"].map(lambda c: to_list(c, int))       # step 2
-df["search_keywords"] = df["search_keywords"].map(lambda c: to_list(c, str))
-df["keywords"] = df["keywords"].map(lambda c: to_list(c, str))
-df["timestamp"] = df["timestamp"].astype("Int64")                          # step 3
-df["frequency"] = df["frequency"].astype("Int64")
-df = df.drop_duplicates("id")                                              # step 4
-
-table = pa.Table.from_pandas(df, schema=pa.schema(CATALOG_SCHEMA), preserve_index=False)
-pq.write_table(table, CATALOG_PATH)                                        # step 5
-check_catalog_schema(CATALOG_PATH)
+path = catalog_from_csv("examples/sample_catalog.csv")  # examples/sample_catalog.parquet
+job = client.embed(path, wait=True, timeout=1800.0)
 ```
 
-If the source uses other column names, rename them to the names in the table first. Add any column the source lacks as all-null. Set `event_type` and `group` to `"product"` on every row.
+It does what the format needs, so the result does not depend on how a CSV reader guesses types:
+
+1. Every cell is read as text, so `price` and ids keep their formatting.
+2. List columns become real lists: `sales_since` of integers, `search_keywords` and `keywords` of strings. A cell may be `[1, 2]` or `a, b`.
+3. `timestamp` and `frequency` become int64. A value that is not a whole number raises `UnboxAIError` naming the column.
+4. Empty cells, and columns the CSV lacks, become null. Columns not in the table above are left out.
+5. Duplicate `id` rows keep the first, as the server would.
+
+If the source uses other column names, rename them to the names in the table first, and set `event_type` and `group` to `"product"` on every row. For a source that is not a CSV, build the table with `pa.schema(CATALOG_SCHEMA)` from `behaviorgpt.resources.catalogs` so types are forced rather than inferred, write it with `pyarrow.parquet.write_table`, and run `check_catalog_schema(path)` before uploading.
