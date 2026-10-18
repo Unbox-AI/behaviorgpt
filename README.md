@@ -90,7 +90,7 @@ JupyterLab opens in your browser. Open the notebook and pick the `behaviorgpt-en
 The model can only return items it knows about. Out of the box the client uses `retail_catalog`, a sample retail catalog. To use the model on your own data, upload your catalog as a parquet file. A catalog doesn't have to be products for sale: artworks, articles, listings or anything else people browse and pick from work the same way.
 
 - The required columns and types are described in [`docs/catalog-format.md`](https://github.com/Unbox-AI/behaviorgpt/blob/main/docs/catalog-format.md).
-- A catalog can hold at most 20 000 items.
+- A catalog can hold at most 100 000 items.
 - Each API key can hold 2 catalogs. The file name is the catalog's name: uploading a file with the same name again refreshes that catalog and keeps its `catalog_id`, and a new name takes one of the 2 slots. A failed upload does not use up a slot. Once both slots are in use, an upload under a new name is refused; to remove a catalog or raise the limit, contact alexander@unboxai.com.
 - [`examples/sample_catalog.csv`](https://github.com/Unbox-AI/behaviorgpt/blob/main/examples/sample_catalog.csv) is an example only, showing what each column should contain. Your own file will look different depending on your catalog, and it has to be converted to the parquet structure described in the format doc before upload.
 
@@ -109,7 +109,7 @@ client.add_items("new_items.parquet", catalog_id=job.catalog_id, wait=True)
 
 - An item whose `id` is already in the catalog is replaced with the new row; any other item is added. Nothing is removed.
 - The new items are embedded at the catalog's own reference time, so their ages and sales are measured the same way as the rest of the catalog's.
-- The 20 000-item limit counts the whole catalog: the items it holds plus the new ones.
+- The 100 000-item limit counts the whole catalog: the items it holds plus the new ones.
 - One `add_items` job runs per catalog at a time, and the catalog cannot be refreshed or deleted while it runs.
 - Uploading the catalog's file again with `embed` replaces the whole catalog, added items included. Put them in that file too to keep them.
 - A catalog embedded before `add_items` existed needs one more full upload before items can be added to it.
