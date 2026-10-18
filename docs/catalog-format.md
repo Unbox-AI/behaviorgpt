@@ -46,6 +46,8 @@ job = client.embed(
 | `search_keywords` | list of string | yes | Extra search terms. Augmentation only. |
 | `keywords` | list of string | yes | Extra tags. Augmentation only. |
 
+The large, view and dictionary layouts of these types are accepted too, so a parquet written by pandas 3 or polars (`large_string`, `large_list`, `string_view`, pandas `category`) needs no cast.
+
 ## Minimum viable catalog
 
 `id`, `name`, `event_type = "product"`, `group = "product"`. Every other column may be null. The job completes and the embedding is built from the title alone.

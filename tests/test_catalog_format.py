@@ -3,6 +3,7 @@ check_catalog_schema must say the same thing."""
 
 import re
 
+import pandas as pd
 import pyarrow as pa
 import pyarrow.compute as pc
 import pytest
@@ -60,9 +61,32 @@ def test_every_problem_is_reported_at_once(write_catalog):
     "column,cast",
     [
         ("id", pa.large_string()),  # pa.Table.from_pandas(df) under pandas 3
+        ("brand", pa.string_view()),
         ("name", pa.dictionary(pa.int32(), pa.string())),  # pandas category
-        ("timestamp", pa.int32()),
         ("sales_since", pa.large_list(pa.int64())),
+        ("keywords", pa.large_list(pa.large_string())),
+    ],
+)
+def test_wide_layouts_of_the_right_type_pass(write_catalog, column, cast):
+    """The embedder casts these to the plain layout before it checks types."""
+    t = catalog_table()
+    i = t.schema.get_field_index(column)
+    t = t.set_column(i, column, t.column(i).cast(cast))
+    check_catalog_schema(write_catalog(t))
+
+
+def test_a_catalog_written_by_pandas_passes(tmp_path):
+    path = tmp_path / "catalog.parquet"
+    pd.DataFrame(catalog_table().to_pylist()).to_parquet(path, index=False)
+    check_catalog_schema(path)
+
+
+@pytest.mark.parametrize(
+    "column,cast",
+    [
+        ("timestamp", pa.int32()),
+        ("sales_since", pa.large_list(pa.int32())),
+        ("price", pa.float64()),
     ],
 )
 def test_near_miss_types_are_rejected(write_catalog, column, cast):
