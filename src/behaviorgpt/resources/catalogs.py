@@ -49,10 +49,31 @@ CATALOG_SCHEMA = {
 }
 
 
+def _plain_type(t: pa.DataType) -> pa.DataType:
+    """The embedder casts large, view and dictionary layouts to their plain
+    forms before it checks a type, so the check here does the same."""
+    if pa.types.is_dictionary(t):
+        return _plain_type(t.value_type)
+    if pa.types.is_large_string(t) or pa.types.is_string_view(t):
+        return pa.string()
+    if pa.types.is_large_binary(t) or pa.types.is_binary_view(t):
+        return pa.binary()
+    if (
+        pa.types.is_list(t)
+        or pa.types.is_large_list(t)
+        or pa.types.is_list_view(t)
+        or pa.types.is_large_list_view(t)
+    ):
+        return pa.list_(_plain_type(t.value_type))
+    return t
+
+
 def check_catalog_schema(path: Path) -> None:
     """Raise `UnboxAIError` if the parquet's columns do not match `CATALOG_SCHEMA`.
 
-    An entirely null column has Arrow type `null` and is accepted.
+    An entirely null column has Arrow type `null` and is accepted, and so are
+    the large, view and dictionary layouts of a type, which pandas 3 and polars
+    write by default.
     """
     try:
         schema = pq.read_schema(path)
@@ -64,7 +85,7 @@ def check_catalog_schema(path: Path) -> None:
             problems.append(f"{column}: missing")
             continue
         actual = schema.field(column).type
-        if actual != expected and not pa.types.is_null(actual):
+        if _plain_type(actual) != expected and not pa.types.is_null(actual):
             problems.append(f"{column}: expected {expected}, got {actual}")
     if problems:
         raise UnboxAIError(
