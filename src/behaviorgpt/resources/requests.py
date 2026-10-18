@@ -25,6 +25,7 @@ class UnboxAIRequester:
         register_event: bool = False,
         timestamp: Optional[datetime] = None,
         num_candidates: Optional[int] = None,
+        max_trailing_searches: Optional[int] = None,
     ) -> UnboxAIRequest:
         return UnboxAIRequest(
             query=query,
@@ -38,4 +39,5 @@ class UnboxAIRequester:
             register_event=register_event,
             timestamp=timestamp,
             num_candidates=num_candidates,
+            max_trailing_searches=max_trailing_searches,
         )

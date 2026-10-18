@@ -83,6 +83,23 @@ def test_a_history_ending_in_a_search_asks_for_search():
     assert requests[0].url.path == "/v1/vector/search"
     body = json.loads(requests[0].content)
     assert body["query"] == "shoes" and len(body["history"]) == 1
+    assert body["max_trailing_searches"] == 3
+
+
+def test_searches_in_a_row_reach_search_with_their_count():
+    client, requests = mock_client()
+    asyncio.run(
+        client.complete([Search("nike"), Search("shoes")], max_trailing_searches=5)
+    )
+    body = json.loads(requests[0].content)
+    assert [h["event"]["query"] for h in body["history"]] == ["nike"]
+    assert body["max_trailing_searches"] == 5
+
+
+def test_recommendations_leave_out_the_search_count():
+    client, requests = mock_client()
+    asyncio.run(client.complete([View("sku-1")]))
+    assert "max_trailing_searches" not in json.loads(requests[0].content)
 
 
 def test_similar_items_hits_the_similar_products_endpoint():

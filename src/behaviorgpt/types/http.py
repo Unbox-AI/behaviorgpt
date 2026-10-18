@@ -56,6 +56,10 @@ class UnboxAIRequest(BaseModel):
     timestamp: Optional[datetime] = None
     # How many nearest-neighbour candidates the server explores.
     num_candidates: Optional[int] = Field(default=None, gt=0, le=5_000)
+    # Search only: how many searches in a row at the end of the history, the
+    # query included, reach the model. Unset, the deployment's history settings
+    # apply.
+    max_trailing_searches: Optional[int] = Field(default=None, ge=1, le=10)
 
     @field_validator("timestamp")
     @classmethod

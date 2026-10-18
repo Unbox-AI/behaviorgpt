@@ -5,7 +5,7 @@ from behaviorgpt._exceptions import (
     RateLimitError,
     UnboxAIError,
 )
-from behaviorgpt.resources.catalogs import ProgressPrinter
+from behaviorgpt.resources.catalogs import ProgressPrinter, catalog_from_csv
 from behaviorgpt.types.events import (
     AddToCart,
     Order,
@@ -23,6 +23,7 @@ __all__ = [
     "UnboxAIClient",
     "AsyncUnboxAIClient",
     "ProgressPrinter",
+    "catalog_from_csv",
     "UnboxAIError",
     "AuthenticationError",
     "BadRequestError",

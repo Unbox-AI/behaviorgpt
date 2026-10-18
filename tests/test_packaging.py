@@ -7,7 +7,7 @@ import sys
 
 import pytest
 
-from .conftest import ROOT
+from .conftest import ROOT, SAMPLE_CSV
 
 pytestmark = pytest.mark.skipif(shutil.which("uv") is None, reason="needs uv")
 
@@ -60,6 +60,19 @@ def test_import_after_clean_install(clean_install):
         text=True,
     )
     assert proc.returncode == 0, proc.stderr[-2000:]
+
+
+def test_catalog_from_csv_runs_without_pandas(clean_install, tmp_path):
+    out = tmp_path / "sample_catalog.parquet"
+    code = (
+        "from behaviorgpt import catalog_from_csv\n"
+        f"print(catalog_from_csv({str(SAMPLE_CSV)!r}, {str(out)!r}))\n"
+    )
+    proc = subprocess.run(
+        [str(clean_install), "-c", code], capture_output=True, text=True
+    )
+    assert proc.returncode == 0, proc.stderr[-2000:]
+    assert out.exists()
 
 
 def test_to_pandas_explains_a_missing_pandas(clean_install):

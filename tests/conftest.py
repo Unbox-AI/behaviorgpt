@@ -7,6 +7,7 @@ import pytest
 from behaviorgpt.resources.catalogs import CATALOG_SCHEMA
 
 ROOT = Path(__file__).resolve().parent.parent
+SAMPLE_CSV = ROOT / "examples" / "sample_catalog.csv"
 
 
 def catalog_table(rows: int = 3) -> pa.Table:
