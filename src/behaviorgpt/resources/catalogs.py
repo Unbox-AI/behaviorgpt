@@ -12,6 +12,7 @@ import pyarrow.parquet as pq
 from behaviorgpt._exceptions import UnboxAIError
 from behaviorgpt.resources._shared import handle_response
 from behaviorgpt.types import (
+    AddItemsJobDetails,
     EmbedJobDetails,
     JobStatus,
     SimilarItemsRequest,
@@ -103,6 +104,12 @@ def upload_form(path: Path, reference_time: Optional[datetime | str]) -> dict:
     if reference_time is None:
         return {}
     return {"reference_time": format_reference_time(reference_time)}
+
+
+def items_path(catalog_id: str) -> str:
+    if not catalog_id:
+        raise ValueError("catalog_id is required to add items")
+    return f"/catalogs/{catalog_id}/items"
 
 
 def similar_items_body(
@@ -260,6 +267,46 @@ class Catalogs:
 
         return job
 
+    def add_items(
+        self,
+        path: Path,
+        *,
+        catalog_id: str,
+        wait: bool = False,
+        interval: float = 5.0,
+        timeout: float = 600.0,
+        on_progress: Optional[Callable[[JobStatus], None]] = None,
+        startup_grace: float = 120.0,
+    ) -> AddItemsJobDetails:
+        """Upload the parquet at `path` and embed its items into the catalog
+        `catalog_id`, without re-embedding the rest of it.
+
+        The parquet has the catalog format. An item whose `id` the catalog
+        already has is replaced; any other is added. The catalog keeps serving
+        while the job runs, and the job's status reads like an embed's.
+        `wait` and the arguments after it work as for `embed`.
+        """
+        check_catalog_schema(path)
+
+        with open(path, "rb") as f:
+            response = self._client.post(
+                items_path(catalog_id),
+                files={"file": (path.name, f, "application/octet-stream")},
+            )
+
+        job = AddItemsJobDetails(**handle_response(response))
+
+        if wait:
+            self.wait_for_job(
+                job.job_id,
+                interval=interval,
+                timeout=timeout,
+                on_progress=on_progress,
+                startup_grace=startup_grace,
+            )
+
+        return job
+
     def get_job_status(self, job_id: str) -> JobStatus:
         """Read the job state once, without blocking."""
         response = self._client.get(f"/embed-catalog/{job_id}")
@@ -364,6 +411,38 @@ class AsyncCatalogs:
             )
 
         job = EmbedJobDetails(**handle_response(response))
+
+        if wait:
+            await self.wait_for_job(
+                job.job_id,
+                interval=interval,
+                timeout=timeout,
+                on_progress=on_progress,
+                startup_grace=startup_grace,
+            )
+
+        return job
+
+    async def add_items(
+        self,
+        path: Path,
+        *,
+        catalog_id: str,
+        wait: bool = False,
+        interval: float = 5.0,
+        timeout: float = 600.0,
+        on_progress: Optional[Callable[[JobStatus], None]] = None,
+        startup_grace: float = 120.0,
+    ) -> AddItemsJobDetails:
+        check_catalog_schema(path)
+
+        with open(path, "rb") as f:
+            response = await self._client.post(
+                items_path(catalog_id),
+                files={"file": (path.name, f, "application/octet-stream")},
+            )
+
+        job = AddItemsJobDetails(**handle_response(response))
 
         if wait:
             await self.wait_for_job(

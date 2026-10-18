@@ -15,6 +15,7 @@ from behaviorgpt.resources.recommendations import AsyncRecommender, Recommender
 from behaviorgpt.resources.requests import UnboxAIRequester
 from behaviorgpt.resources.search import AsyncSearcher, Searcher
 from behaviorgpt.types import (
+    AddItemsJobDetails,
     AddToCart,
     CartItem,
     Domains,
@@ -251,6 +252,41 @@ class UnboxAIClient(_BaseClient):
             reference_time=reference_time,
         )
 
+    def add_items(
+        self,
+        path: Path | str,
+        *,
+        catalog_id: str,
+        wait: bool = False,
+        interval: float = 5.0,
+        timeout: float = 600.0,
+        on_progress: Optional[Callable[[JobStatus], None]] = None,
+        startup_grace: float = 120.0,
+    ) -> AddItemsJobDetails:
+        """Add items to, or replace items in, an embedded catalog without
+        re-embedding the rest of it.
+
+        The parquet has the same format as for `embed`. An item whose `id` is
+        already in the catalog is replaced whole; any other is added. The
+        catalog keeps serving while the job runs. Items are embedded at the
+        catalog's own reference time, and the catalog's item limit still
+        applies.
+
+        A later `embed` of the catalog's file replaces the whole catalog,
+        these items included: put them in that file too to keep them.
+
+        `wait` and the arguments after it work as for `embed`.
+        """
+        return self.catalogs.add_items(
+            Path(path),
+            catalog_id=catalog_id,
+            wait=wait,
+            interval=interval,
+            timeout=timeout,
+            on_progress=on_progress,
+            startup_grace=startup_grace,
+        )
+
     def job_status(self, job_id: str) -> JobStatus:
         return self.catalogs.get_job_status(job_id)
 
@@ -390,6 +426,29 @@ class AsyncUnboxAIClient(_BaseClient):
             on_progress=on_progress,
             startup_grace=startup_grace,
             reference_time=reference_time,
+        )
+
+    async def add_items(
+        self,
+        path: Path | str,
+        *,
+        catalog_id: str,
+        wait: bool = False,
+        interval: float = 5.0,
+        timeout: float = 600.0,
+        on_progress: Optional[Callable[[JobStatus], None]] = None,
+        startup_grace: float = 120.0,
+    ) -> AddItemsJobDetails:
+        """Add or replace items in an embedded catalog; see
+        `UnboxAIClient.add_items`."""
+        return await self.catalogs.add_items(
+            Path(path),
+            catalog_id=catalog_id,
+            wait=wait,
+            interval=interval,
+            timeout=timeout,
+            on_progress=on_progress,
+            startup_grace=startup_grace,
         )
 
     async def job_status(self, job_id: str) -> JobStatus:

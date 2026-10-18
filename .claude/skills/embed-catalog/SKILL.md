@@ -88,6 +88,8 @@ print(job.catalog_id)
 
 The file name (without `.parquet`) is the catalog's name. Uploading the same name again refreshes that catalog and keeps its `catalog_id`; a new name takes one of the key's catalog slots (2 by default). Ask the user whether this is a new catalog or a refresh of one they already embedded, and name the file to match. If the upload is refused because the key is at its limit, tell the user; nothing was replaced, and they can refresh an existing catalog under its name or contact alexander@unboxai.com to remove one or raise the limit.
 
+If the user only wants to add a few items to a catalog they already embedded, or change some of its items, build a parquet of just those items and upload it with `client.add_items(path, catalog_id=..., wait=True)` instead: only those items are embedded, an `id` already in the catalog is replaced, and the catalog keeps serving. A later full `embed` of the catalog replaces everything, so their main catalog file should get the same rows.
+
 Load `.env` first (`from dotenv import load_dotenv; load_dotenv()`) if the key is not already in the environment. Embedding takes several minutes; run it in the background if the tool allows.
 
 On failure, `UnboxAIError` carries the server's reason. `client.job_status(job.job_id).error` holds the same text. Map it back to a fix from `docs/catalog-format.md`, most often the image host.

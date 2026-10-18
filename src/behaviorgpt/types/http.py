@@ -143,6 +143,11 @@ class EmbedJobDetails(BaseModel):
     uri: str
 
 
+class AddItemsJobDetails(EmbedJobDetails):
+    # distinct item ids in the upload, new and replaced alike
+    products: int
+
+
 class SimilarItemsRequest(BaseModel):
     model_config = ConfigDict(serialize_by_alias=True)
 
