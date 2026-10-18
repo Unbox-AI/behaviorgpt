@@ -54,6 +54,28 @@ print(client.similar_items(res.items[0].id).names)
 
 `complete` takes the history and returns the items most likely to come next. Each result in `res.items` has an `id`, a `score` and the catalog row in `data`; `res.to_pandas()` gives a DataFrame if pandas is installed.
 
+### Async
+
+In asyncio code, such as a FastAPI or aiohttp server, use `AsyncUnboxAIClient`. It takes the same arguments and has the same methods, awaited, so a call never blocks the event loop and many calls can run at once:
+
+```python
+import asyncio
+
+from behaviorgpt import AsyncUnboxAIClient, Search
+
+async def main():
+    async with AsyncUnboxAIClient(market="us") as client:
+        shoes, gloves = await asyncio.gather(
+            client.complete([Search("running shoes")], limit=5),
+            client.complete([Search("gloves")], limit=5),
+        )
+        print(shoes.names, gloves.names)
+
+asyncio.run(main())
+```
+
+Create one client and reuse it, for example for the lifetime of your server: `async with` closes its connections at the end, or call `await client.aclose()`. `embed(..., wait=True)` waits for the job without blocking other requests.
+
 ## How it works
 
 - **One call, many features.** Every request asks the same question: given what this person did, which items are they most likely to act on next? The history picks the feature. End it with a `Search` for search results, with a `View` for "more like this", with an `Order` for what is bought next; leave it empty for a cold start.
@@ -91,6 +113,21 @@ The model can only return items it knows about. Out of the box the client uses `
 job = client.embed("my_catalog.parquet", wait=True, timeout=1800.0)
 client.complete([Search("...")], catalog_id=job.catalog_id)
 ```
+
+### Adding or updating items
+
+To add items to an embedded catalog, or change some of its items, upload just those items in the same format. Only they are embedded, so the job takes about as long as the file is big, and the catalog keeps answering queries while it runs:
+
+```python
+client.add_items("new_items.parquet", catalog_id=job.catalog_id, wait=True)
+```
+
+- An item whose `id` is already in the catalog is replaced with the new row; any other item is added. Nothing is removed.
+- The new items are embedded at the catalog's own reference time, so their ages and sales are measured the same way as the rest of the catalog's.
+- The 20 000-item limit counts the whole catalog: the items it holds plus the new ones.
+- One `add_items` job runs per catalog at a time, and the catalog cannot be refreshed or deleted while it runs.
+- Uploading the catalog's file again with `embed` replaces the whole catalog, added items included. Put them in that file too to keep them.
+- A catalog embedded before `add_items` existed needs one more full upload before items can be added to it.
 
 If mapping your data to the format is hard, open a coding agent in this directory and ask it to embed your catalog. The repo ships a skill at [`.claude/skills/embed-catalog/SKILL.md`](https://github.com/Unbox-AI/behaviorgpt/blob/main/.claude/skills/embed-catalog/SKILL.md) that walks the agent through mapping your columns, building and validating the parquet, checking image URLs, and uploading. Claude Code picks it up automatically; for other agents, point them at that file.
 

@@ -1,4 +1,4 @@
-from behaviorgpt._client import UnboxAIClient
+from behaviorgpt._client import AsyncUnboxAIClient, UnboxAIClient
 from behaviorgpt._exceptions import (
     AuthenticationError,
     BadRequestError,
@@ -21,6 +21,7 @@ __all__ = [
     "RemoveFromCart",
     "Order",
     "UnboxAIClient",
+    "AsyncUnboxAIClient",
     "ProgressPrinter",
     "UnboxAIError",
     "AuthenticationError",
