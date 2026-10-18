@@ -58,7 +58,7 @@ With order lines (item id + date + quantity), compute per item, relative to toda
 
 ### 4. Enforce the limits
 
-- At most 20 000 items. If the source is larger, ask the user how to select, and suggest the top 20 000 by `frequency` or recent sales.
+- At most 100 000 items. If the source is larger, ask the user how to select, and suggest the top 100 000 by `frequency` or recent sales.
 - Unique `id`. Report how many duplicates were dropped; the server would silently keep the first.
 - `id` and `name` must be non-null. Drop rows missing either and report the count.
 
