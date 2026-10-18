@@ -6,12 +6,14 @@ import re
 import pandas as pd
 import pyarrow as pa
 import pyarrow.compute as pc
+import pyarrow.parquet as pq
 import pytest
 
+from behaviorgpt import catalog_from_csv
 from behaviorgpt._exceptions import UnboxAIError
 from behaviorgpt.resources.catalogs import CATALOG_SCHEMA, check_catalog_schema
 
-from .conftest import ROOT, catalog_table
+from .conftest import ROOT, SAMPLE_CSV, catalog_table
 
 DOC = ROOT / "docs" / "catalog-format.md"
 
@@ -109,3 +111,62 @@ def test_non_parquet_is_an_sdk_error(tmp_path):
 def test_missing_file_is_an_sdk_error(tmp_path):
     with pytest.raises(UnboxAIError, match="not a readable parquet file"):
         check_catalog_schema(tmp_path / "nope.parquet")
+
+
+# ---- catalog_from_csv -------------------------------------------------------
+
+
+def from_csv(tmp_path, text: str) -> pa.Table:
+    path = tmp_path / "catalog.csv"
+    path.write_text(text)
+    return pq.read_table(catalog_from_csv(path))
+
+
+def test_sample_csv_converts_to_the_schema(tmp_path):
+    out = catalog_from_csv(SAMPLE_CSV, tmp_path / "sample_catalog.parquet")
+    table = pq.read_table(out)
+    assert table.schema == pa.schema(CATALOG_SCHEMA)
+    assert table.num_rows == 100
+    assert all(len(s) == 12 for s in table.column("sales_since").to_pylist())
+    assert table.column("price").to_pylist()[0] == "175"
+
+
+def test_parquet_goes_next_to_the_csv_by_default(tmp_path):
+    csv = tmp_path / "my_catalog.csv"
+    csv.write_text("id,name,event_type,group\na,A,product,product\n")
+    assert catalog_from_csv(csv) == tmp_path / "my_catalog.parquet"
+
+
+def test_cells_are_text_and_lists_are_parsed(tmp_path):
+    table = from_csv(
+        tmp_path,
+        "id,name,price,sales_since,keywords,timestamp\n"
+        '007,Bond,299.00,"[1, 2, 3]","red, blue",1700000000\n',
+    )
+    row = table.to_pylist()[0]
+    assert row["id"] == "007" and row["price"] == "299.00"
+    assert row["sales_since"] == [1, 2, 3]
+    assert row["keywords"] == ["red", "blue"]
+    assert row["timestamp"] == 1_700_000_000
+
+
+def test_empty_cells_and_missing_columns_are_null(tmp_path):
+    table = from_csv(tmp_path, "id,name,brand,keywords,color\na,A,,,red\n")
+    row = table.to_pylist()[0]
+    assert row["brand"] is None and row["keywords"] is None
+    assert row["frequency"] is None and row["image_url"] is None
+    assert "color" not in table.column_names
+
+
+def test_duplicate_ids_keep_the_first_row(tmp_path):
+    table = from_csv(tmp_path, "id,name\na,first\nb,other\na,second\n")
+    assert table.column("name").to_pylist() == ["first", "other"]
+
+
+@pytest.mark.parametrize(
+    "column,cell",
+    [("timestamp", "yesterday"), ("sales_since", "[1, two]"), ("frequency", "1.5")],
+)
+def test_unreadable_values_name_their_column(tmp_path, column, cell):
+    with pytest.raises(UnboxAIError, match=column):
+        from_csv(tmp_path, f'id,name,{column}\na,A,"{cell}"\n')

@@ -107,10 +107,13 @@ The model can only return items it knows about. Out of the box the client uses `
 - [`docs/catalog-format.md`](https://github.com/Unbox-AI/behaviorgpt/blob/main/docs/catalog-format.md) lists the required columns and types.
 - A catalog can hold at most 100,000 items.
 - Each API key can hold 2 catalogs. The file name is the catalog's name: uploading a file with the same name again refreshes that catalog and keeps its `catalog_id`, and a new name takes one of the 2 slots. A failed upload does not use up a slot. Once both slots are in use, an upload under a new name is refused until you delete one of them (see below); to raise the limit, contact alexander@unboxai.com.
-- [`examples/sample_catalog.csv`](https://github.com/Unbox-AI/behaviorgpt/blob/main/examples/sample_catalog.csv) is an example only, showing what each column should contain. Your own file will look different depending on your catalog, and it has to be converted to the parquet structure described in the format doc before upload.
+- [`examples/sample_catalog.csv`](https://github.com/Unbox-AI/behaviorgpt/blob/main/examples/sample_catalog.csv) is an example only, showing what each column should contain. Your own file will look different depending on your catalog. A CSV with the documented column names converts to the parquet structure with `catalog_from_csv`.
 
 ```python
-job = client.embed("my_catalog.parquet", wait=True, timeout=1800.0)
+from behaviorgpt import catalog_from_csv
+
+path = catalog_from_csv("my_catalog.csv")  # writes my_catalog.parquet
+job = client.embed(path, wait=True, timeout=1800.0)
 client.complete([Search("...")], catalog_id=job.catalog_id)
 ```
 

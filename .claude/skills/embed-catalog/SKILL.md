@@ -64,7 +64,13 @@ With order lines (item id + date + quantity), compute per item, relative to toda
 
 ### 5. Build and validate the parquet
 
-Follow the "From CSV to parquet" recipe in `docs/catalog-format.md`: read everything as text, parse list columns into real lists, cast `timestamp` and `frequency` to int64, keep `price` as a string, build the table with `pa.schema(CATALOG_SCHEMA)`, write it, then run `check_catalog_schema(path)`. Fix and rerun until it passes.
+Write the mapped data as a CSV with the target column names to `.untracked/<catalog_name>.csv`, then convert it with `catalog_from_csv` (see "From CSV to parquet" in `docs/catalog-format.md`). It reads every cell as text, parses list columns, casts `timestamp` and `frequency` to int64, drops duplicate ids, writes `.untracked/<catalog_name>.parquet` and runs `check_catalog_schema` on it. If it raises `UnboxAIError`, the message names the column; fix the source and rerun until it passes.
+
+```python
+from behaviorgpt import catalog_from_csv
+
+path = catalog_from_csv(".untracked/my_catalog.csv")  # .untracked/my_catalog.parquet
+```
 
 ### 6. Check images before uploading
 
