@@ -78,7 +78,7 @@ Create one client and reuse it, for example for the lifetime of your server: `as
 
 ## How it works
 
-- **One call, many features.** Every request asks the same question: given what this person did, which items are they most likely to act on next? The history picks the feature. End it with a `Search` for search results, with a `View` for "more like this", with an `Order` for what is bought next; leave it empty for a cold start.
+- **One call, many features.** Every request asks the same question: given what this person did, which items are they most likely to act on next? The history picks the feature. End it with a `Search` for search results, with a `View` for "more like this", with an `Order` for what they want after buying; leave it empty for a cold start. `predict="purchase"` asks what else goes in the same purchase instead of what they look at next, for a "bought together" shelf.
 - **The whole sequence counts.** The model reads the history in order, so the same query means different things after different actions: "gloves" after "golf clubs" returns golf gloves. `market` on the client says where the user is, which helps most when the history is short.
 - **Items are read from their content, not their ids.** Each item is embedded from its name, brand, categories, image and price. That is why the model can rank a catalog it has never seen as soon as it is uploaded, with no interaction data and no training, and why those columns decide how well it does ([catalog format](https://github.com/Unbox-AI/behaviorgpt/blob/main/docs/catalog-format.md)).
 - **One pass per request.** Item vectors are computed once when the catalog is embedded, so ranking the whole catalog costs one forward pass over the history rather than one per item: the model itself takes under a millisecond per query, and most of an API call's time is the network.
@@ -177,7 +177,23 @@ If mapping your data to the format is hard, open a coding agent in this director
 
 ### Events
 
-A history is a list of `Search`, `View`, `AddToCart`, `RemoveFromCart` and `Order` events. The names come from a store because that is what the API accepts, but they work for any catalog: map your users' actions by meaning. Curate my wall sends "look closer" as `View`, "hang it on the wall" as `AddToCart` and "take it down" as `RemoveFromCart`.
+A history is a list of three kinds of event:
+
+- `Search("running shoes")`: a query.
+- `View(item_id)`: the person looked at an item. Any sign of interest counts as a view: a click, a like, a save, an item added to a cart.
+- `Order([item_id, ...])`: a finished purchase of those items. Only which items were bought matters; quantities do not change results.
+
+The names come from a store, but they work for any catalog: map your users' actions by meaning. In Curate my wall, "look closer" and "hang it on the wall" both count as views. To leave something out, such as an item the person removed, leave it out of the list.
+
+`complete` predicts what the person looks at next. With `predict="purchase"` it predicts what else goes in the same purchase as the current session's items instead; that needs a history that does not end in a search.
+
+```python
+client.complete([View(shoe)])                      # others also viewed
+client.complete([View(shoe)], predict="purchase")  # bought together
+client.complete([View(shoe), Order([shoe])])       # what they want after buying it
+```
+
+`AddToCart`, `RemoveFromCart` and `Order()` without items still work but are deprecated, and will be removed in 0.6. The model reads `AddToCart` the same as `View`, and `RemoveFromCart` does not change results; until 0.6, a bare `Order()` buys what was added to the cart and not removed.
 
 ## Demo and examples
 

@@ -2,6 +2,7 @@
 The old product names keep working for one release, with a DeprecationWarning."""
 
 import json
+import warnings
 
 import httpx
 import pytest
@@ -33,6 +34,7 @@ def mock_client():
     return client, requests
 
 
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")
 @pytest.mark.parametrize("event_type", [View, AddToCart, RemoveFromCart])
 def test_item_events_send_product_on_the_wire(event_type):
     event = event_type("sku-1")
@@ -53,6 +55,51 @@ def test_order_accepts_item_quantity_tuples():
     order = Order(items=[("sku-1", 2), CartItem("sku-2", 1)])
     assert [(i.item, i.quantity) for i in order.items] == [("sku-1", 2), ("sku-2", 1)]
     assert order.model_dump()["items"][0] == {"product": "sku-1", "quantity": 2}
+
+
+def test_order_takes_the_items_bought_first():
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        order = Order(["sku-1", ("sku-2", 2)], cart_id="cart-1")
+    assert [(i.item, i.quantity) for i in order.items] == [("sku-1", 1), ("sku-2", 2)]
+    assert order.cart_id == "cart-1"
+
+
+def test_a_string_first_is_still_the_cart_id_with_a_warning():
+    with pytest.warns(DeprecationWarning, match="cart_id="):
+        order = Order("cart-1", ["sku-1"])
+    assert order.cart_id == "cart-1"
+    assert [i.item for i in order.items] == ["sku-1"]
+
+
+@pytest.mark.parametrize(
+    ("make", "match"),
+    [
+        (lambda: AddToCart("sku-1"), "same as `View`"),
+        (lambda: RemoveFromCart("sku-1"), "does not change results"),
+        (lambda: Order(), r"Order\(\[item"),
+    ],
+)
+def test_cart_events_and_an_order_without_items_are_deprecated(make, match):
+    with pytest.warns(DeprecationWarning, match=match):
+        make()
+
+
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")
+def test_an_order_without_items_buys_the_cart_less_what_was_removed():
+    client, requests = mock_client()
+    client.complete(
+        [
+            AddToCart("sku-1"),
+            AddToCart("sku-2"),
+            AddToCart("sku-2"),
+            RemoveFromCart("sku-1"),
+            RemoveFromCart("sku-2"),
+            Order(),
+        ]
+    )
+    history = json.loads(requests[-1].content)["history"]
+    assert history[-1]["event"]["items"] == [{"product": "sku-2", "quantity": 1}]
 
 
 def test_response_flattens_the_products_page():
@@ -81,10 +128,10 @@ def test_similar_items_hits_the_similar_products_endpoint():
 
 def test_history_sends_product_in_events():
     client, requests = mock_client()
-    client.complete([View("sku-1"), AddToCart("sku-1"), Order()])
+    client.complete([View("sku-1"), Order(["sku-1"])])
     history = json.loads(requests[-1].content)["history"]
     assert history[0]["event"]["product"] == "sku-1"
-    assert history[2]["event"]["items"] == [{"product": "sku-1", "quantity": 1}]
+    assert history[1]["event"]["items"] == [{"product": "sku-1", "quantity": 1}]
 
 
 def test_deprecated_client_methods_still_work():

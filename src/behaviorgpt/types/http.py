@@ -1,6 +1,6 @@
 import warnings
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, List, Optional
+from typing import TYPE_CHECKING, Any, List, Literal, Optional
 
 from pydantic import (
     AliasChoices,
@@ -41,6 +41,10 @@ class ItemsPage(BaseModel):
     limit: int
 
 
+class RecommendationType(BaseModel):
+    name: Literal["view_next", "buy_next"]
+
+
 class UnboxAIRequest(BaseModel):
     query: Optional[str] = Field(default=None)
 
@@ -60,6 +64,9 @@ class UnboxAIRequest(BaseModel):
     # query included, reach the model. Unset, the deployment's history settings
     # apply.
     max_trailing_searches: Optional[int] = Field(default=None, ge=1, le=10)
+    # Recommendations only: `buy_next` predicts what else goes in the same
+    # purchase. Unset, the server predicts the next item viewed.
+    type: Optional[RecommendationType] = None
 
     @field_validator("timestamp")
     @classmethod
