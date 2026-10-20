@@ -170,7 +170,7 @@ job = client.embed(path, keywords=True, wait=True, timeout=4 * 3600.0)
 - With `embed(..., keywords=True)`, if keyword generation fails, the catalog still goes live, without keywords. The job's status then reads `keywords_skipped`, with the reason in `keywords_error`, and `sections` returns an empty list for that catalog.
 - Uploading the catalog again with `embed` replaces its keywords. Pass `keywords=True` there, or call `add_keywords` again, to keep them.
 - A history that ends in a search groups that search's results; any other history groups recommendations.
-- Items added with `add_items` get no keywords until you call `add_keywords` again or upload the catalog with `embed(..., keywords=True)`; until then they are left out of sections.
+- Items added or replaced with `add_items` have no keywords until you call `add_keywords` again or upload the catalog with `embed(..., keywords=True)`; until then they are left out of sections.
 - One `add_items` or `add_keywords` job runs per catalog at a time, and the catalog cannot be refreshed or deleted while it runs.
 
 If mapping your data to the format is hard, open a coding agent in this directory and ask it to embed your catalog. The repo ships a skill at [`.claude/skills/embed-catalog/SKILL.md`](https://github.com/Unbox-AI/behaviorgpt/blob/main/.claude/skills/embed-catalog/SKILL.md) that walks the agent through mapping your columns, building and validating the parquet, checking image URLs, and uploading. Claude Code picks it up automatically; for other agents, point them at that file.
