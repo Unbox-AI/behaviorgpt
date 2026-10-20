@@ -23,6 +23,8 @@ from behaviorgpt.types.http import (
     ItemsRejected,
     JobStatus,
     RejectedItem,
+    Section,
+    SectionsResponse,
     SimilarItemsRequest,
     UnboxAIRequest,
     UnboxAIResponse,
@@ -50,6 +52,8 @@ __all__ = [
     "Item",
     "ItemsPage",
     "CartItem",
+    "Section",
+    "SectionsResponse",
 ]
 
 

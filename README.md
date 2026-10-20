@@ -145,6 +145,22 @@ client.delete_catalog("cat_...")
 - `delete_catalog()` removes one of your catalogs with its items and frees its slot. It cannot be undone.
 - Deleting another key's catalog fails with status 404, the same as an unknown id. While an `embed` or `add_items` job runs for the catalog, deleting fails with status 409; try again once the job is ready or failed.
 
+### Keywords and sections
+
+Sections group the items the model ranks under titles such as "black coats", best section first. They are built from item keywords, so embed your catalog with `keywords=True` to use them:
+
+```python
+job = client.embed(path, keywords=True, wait=True, timeout=4 * 3600.0)
+response = client.sections([Search("coat")], catalog_id=job.catalog_id)
+for section in response.sections:
+    print(section.title, [item.data["name"] for item in section.items])
+```
+
+- Keyword generation adds time before the catalog is ready, roughly an hour per 25,000 items, so allow a longer `timeout`.
+- If keyword generation fails, the catalog still goes live, without keywords. The job's status then reads `keywords_skipped`, with the reason in `keywords_error`, and `sections` returns an empty list for that catalog.
+- A history that ends in a search groups that search's results; any other history groups recommendations.
+- Items added with `add_items` get no keywords until the catalog is uploaded again with `embed(..., keywords=True)`; until then they are left out of sections.
+
 If mapping your data to the format is hard, open a coding agent in this directory and ask it to embed your catalog. The repo ships a skill at [`.claude/skills/embed-catalog/SKILL.md`](https://github.com/Unbox-AI/behaviorgpt/blob/main/.claude/skills/embed-catalog/SKILL.md) that walks the agent through mapping your columns, building and validating the parquet, checking image URLs, and uploading. Claude Code picks it up automatically; for other agents, point them at that file.
 
 ### Events

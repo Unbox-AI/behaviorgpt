@@ -197,12 +197,17 @@ class ProgressPrinter:
             self.last = line
 
 
-def upload_form(path: Path, reference_time: Optional[datetime | str]) -> dict:
+def upload_form(
+    path: Path, reference_time: Optional[datetime | str], keywords: bool = False
+) -> dict:
     """Check the parquet and return the upload's form fields."""
     check_catalog_schema(path)
-    if reference_time is None:
-        return {}
-    return {"reference_time": format_reference_time(reference_time)}
+    form = {}
+    if reference_time is not None:
+        form["reference_time"] = format_reference_time(reference_time)
+    if keywords:
+        form["keywords"] = "true"
+    return form
 
 
 def items_path(catalog_id: str) -> str:
@@ -341,6 +346,7 @@ class Catalogs:
         on_progress: Optional[Callable[[JobStatus], None]] = None,
         startup_grace: float = 120.0,
         reference_time: Optional[datetime | str] = None,
+        keywords: bool = False,
     ) -> EmbedJobDetails:
         """Upload the parquet at `path`.
 
@@ -351,8 +357,14 @@ class Catalogs:
         polling every `interval` seconds and giving up after `timeout`.
         `on_progress` is called with each status read while waiting; by
         default each new state is printed once (see `ProgressPrinter`).
+
+        `keywords=True` also generates search keywords and browse categories
+        for the items, which `sections` groups by. It adds time before the
+        catalog is ready, so allow a longer `timeout`. If generation fails,
+        the catalog still goes live, without keywords: the job status then
+        reads `keywords_skipped`, with the reason in `keywords_error`.
         """
-        form = upload_form(path, reference_time)
+        form = upload_form(path, reference_time, keywords)
 
         with open(path, "rb") as f:
             response = self._client.post(
@@ -515,8 +527,9 @@ class AsyncCatalogs:
         on_progress: Optional[Callable[[JobStatus], None]] = None,
         startup_grace: float = 120.0,
         reference_time: Optional[datetime | str] = None,
+        keywords: bool = False,
     ) -> EmbedJobDetails:
-        form = upload_form(path, reference_time)
+        form = upload_form(path, reference_time, keywords)
 
         with open(path, "rb") as f:
             response = await self._client.post(

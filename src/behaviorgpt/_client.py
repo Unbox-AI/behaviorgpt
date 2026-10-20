@@ -14,6 +14,7 @@ from behaviorgpt.resources.catalogs import AsyncCatalogs, Catalogs
 from behaviorgpt.resources.recommendations import AsyncRecommender, Recommender
 from behaviorgpt.resources.requests import UnboxAIRequester
 from behaviorgpt.resources.search import AsyncSearcher, Searcher
+from behaviorgpt.resources.sections import AsyncSectioner, Sectioner, sections_body
 from behaviorgpt.types import (
     AddItemsJobDetails,
     AddToCart,
@@ -25,6 +26,7 @@ from behaviorgpt.types import (
     JobStatus,
     Order,
     Search,
+    SectionsResponse,
     SessionEvent,
     UnboxAIRequest,
     UnboxAIResponse,
@@ -106,6 +108,25 @@ class _BaseClient:
             register_event=register_event,
         )
         return False, req, request_headers
+
+    def _sections_request(
+        self,
+        history: UserHistoryInput,
+        catalog_id: Optional[str],
+        filters: Optional[dict[str, Any]],
+        register_event: bool,
+        max_sections: int,
+        max_items_per_section: int,
+        min_items_per_section: int,
+    ) -> tuple[dict, dict]:
+        """The body `sections` sends, and its headers."""
+        _, req, headers = self._complete_request(
+            history, 10, 0, catalog_id, filters, register_event
+        )
+        body = sections_body(
+            req, max_sections, max_items_per_section, min_items_per_section
+        )
+        return body, headers
 
     def __from_sequence(
         self, catalog_id: str, context: UserHistoryInput
@@ -210,6 +231,7 @@ class UnboxAIClient(_BaseClient):
         self.recommendations = Recommender(self._http_client)
         self.search = Searcher(self._http_client)
         self.catalogs = Catalogs(self._http_client)
+        self._sections = Sectioner(self._http_client)
 
     def complete(
         self,
@@ -240,6 +262,37 @@ class UnboxAIClient(_BaseClient):
         endpoint = self.search if is_search else self.recommendations
         return endpoint.create(payload=req, headers=headers)
 
+    def sections(
+        self,
+        history: UserHistoryInput,
+        *,
+        catalog_id: Optional[str] = None,
+        max_sections: int = 10,
+        max_items_per_section: int = 25,
+        min_items_per_section: int = 5,
+        filters: Optional[dict[str, Any]] = None,
+        register_event: bool = False,
+    ) -> SectionsResponse:
+        """The items most likely to come after `history`, grouped into titled
+        sections such as "black coats", best section first.
+
+        A history that ends in a search groups that search's results; any
+        other history groups recommendations. Sections are built from item
+        keywords: `retail_catalog` has them, and a catalog of your own has
+        them if it was embedded with `keywords=True`; without them the list
+        is empty.
+        """
+        body, headers = self._sections_request(
+            history,
+            catalog_id,
+            filters,
+            register_event,
+            max_sections,
+            max_items_per_section,
+            min_items_per_section,
+        )
+        return self._sections.create(body, headers=headers)
+
     def embed(
         self,
         path: Path | str,
@@ -249,6 +302,7 @@ class UnboxAIClient(_BaseClient):
         on_progress: Optional[Callable[[JobStatus], None]] = None,
         startup_grace: float = 120.0,
         reference_time: Optional[datetime | str] = None,
+        keywords: bool = False,
     ) -> EmbedJobDetails:
         """Upload and embed a catalog parquet.
 
@@ -258,6 +312,11 @@ class UnboxAIClient(_BaseClient):
 
         `reference_time` is when item ages and sales are measured; the upload
         time by default.
+
+        `keywords=True` also generates the search keywords and browse
+        categories `sections` groups items by. Allow a longer `timeout`: it
+        adds time before the catalog is ready, roughly an hour per 25,000
+        items. If it fails the catalog still goes live, without them.
         """
         return self.catalogs.embed(
             Path(path),
@@ -267,6 +326,7 @@ class UnboxAIClient(_BaseClient):
             on_progress=on_progress,
             startup_grace=startup_grace,
             reference_time=reference_time,
+            keywords=keywords,
         )
 
     def add_items(
@@ -411,6 +471,7 @@ class AsyncUnboxAIClient(_BaseClient):
         self.recommendations = AsyncRecommender(self._http_client)
         self.search = AsyncSearcher(self._http_client)
         self.catalogs = AsyncCatalogs(self._http_client)
+        self._sections = AsyncSectioner(self._http_client)
 
     async def __aenter__(self) -> "AsyncUnboxAIClient":
         return self
@@ -446,6 +507,29 @@ class AsyncUnboxAIClient(_BaseClient):
         endpoint = self.search if is_search else self.recommendations
         return await endpoint.create(payload=req, headers=headers)
 
+    async def sections(
+        self,
+        history: UserHistoryInput,
+        *,
+        catalog_id: Optional[str] = None,
+        max_sections: int = 10,
+        max_items_per_section: int = 25,
+        min_items_per_section: int = 5,
+        filters: Optional[dict[str, Any]] = None,
+        register_event: bool = False,
+    ) -> SectionsResponse:
+        """Items grouped into titled sections; see `UnboxAIClient.sections`."""
+        body, headers = self._sections_request(
+            history,
+            catalog_id,
+            filters,
+            register_event,
+            max_sections,
+            max_items_per_section,
+            min_items_per_section,
+        )
+        return await self._sections.create(body, headers=headers)
+
     async def embed(
         self,
         path: Path | str,
@@ -455,6 +539,7 @@ class AsyncUnboxAIClient(_BaseClient):
         on_progress: Optional[Callable[[JobStatus], None]] = None,
         startup_grace: float = 120.0,
         reference_time: Optional[datetime | str] = None,
+        keywords: bool = False,
     ) -> EmbedJobDetails:
         """Upload and embed a catalog parquet; see `UnboxAIClient.embed`.
 
@@ -468,6 +553,7 @@ class AsyncUnboxAIClient(_BaseClient):
             on_progress=on_progress,
             startup_grace=startup_grace,
             reference_time=reference_time,
+            keywords=keywords,
         )
 
     async def add_items(
