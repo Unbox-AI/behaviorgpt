@@ -152,6 +152,12 @@ class AddItemsJobDetails(EmbedJobDetails):
     products: int
 
 
+class AddKeywordsJobDetails(BaseModel):
+    job_id: str
+    catalog_id: str
+    catalog_name: str
+
+
 class CatalogSummary(BaseModel):
     catalog_id: str
     # display label derived from the uploaded file name, server-side
@@ -217,22 +223,67 @@ class JobStatus(BaseModel):
         default=None,
         validation_alias=AliasChoices("items_rejected", "products_rejected"),
     )
+    # only for an upload with keywords=True: how keyword generation went,
+    # e.g. "generating", "done", or "skipped" when the catalog went live
+    # without keywords; None until it starts
+    keywords: Optional[str] = None
+    # why keywords were skipped; only set when keywords is "skipped"
+    keywords_error: Optional[str] = None
 
     def describe(self) -> str:
         """One line for progress output: 'embed fetching 5000/20000',
-        'embed failed: <reason>', or 'ingest done (2 of 20000 items
-        rejected: ...)'."""
+        'keywords generating 400/2000', 'embed failed: <reason>', or
+        'ingest done (2 of 20000 items rejected: ...)'."""
         if self.stage is None:
             return self.status
         step = self.phase or self.stage_state or ""
         if self.done is not None and self.total is not None:
             step = f"{step} {self.done}/{self.total}"
-        line = f"{self.stage} {step}".strip()
+        stage = STAGE_LABELS.get(self.stage, self.stage)
+        line = f"{stage} {step}".strip()
         if self.error:
             line = f"{line}: {self.error}"
+        skipped_reason = f": {self.keywords_error}" if self.keywords_error else ""
+        notes = []
+        if self.keywords_skipped:
+            if self.stage == KEYWORDS_STAGE:
+                line = f"{line}{skipped_reason}"
+            else:
+                notes.append(f"keywords skipped{skipped_reason}")
         if self.items_rejected:
-            line = f"{line} ({self.items_rejected.describe()})"
+            notes.append(self.items_rejected.describe())
+        if notes:
+            line = f"{line} ({'; '.join(notes)})"
         return line
+
+    @property
+    def keywords_skipped(self) -> bool:
+        """The catalog is live without keywords, so sections cannot use them;
+        `keywords_error` says why."""
+        return self.keywords == KEYWORDS_SKIPPED
+
+
+# the server's stage name for keyword generation, and the step it ends in
+# when it gives up and the catalog goes live without keywords
+KEYWORDS_STAGE = "top_terms"
+KEYWORDS_SKIPPED = "skipped"
+STAGE_LABELS = {KEYWORDS_STAGE: "keywords"}
+
+
+class Section(BaseModel):
+    """Items grouped under a title, e.g. 'black coats'."""
+
+    title: str
+    # "products" on the wire
+    items: List[Item] = Field(validation_alias=AliasChoices("items", "products"))
+
+
+class SectionsResponse(BaseModel):
+    sections: List[Section]
+
+    @property
+    def titles(self) -> List[str]:
+        return [s.title for s in self.sections]
 
 
 DEPRECATED_NAMES = {
