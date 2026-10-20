@@ -17,6 +17,7 @@ from behaviorgpt.resources.search import AsyncSearcher, Searcher
 from behaviorgpt.resources.sections import AsyncSectioner, Sectioner, sections_body
 from behaviorgpt.types import (
     AddItemsJobDetails,
+    AddKeywordsJobDetails,
     AddToCart,
     CartItem,
     CatalogSummary,
@@ -307,8 +308,9 @@ class UnboxAIClient(_BaseClient):
         """Upload and embed a catalog parquet.
 
         Pass `wait=True` to block until the embed job finishes. While waiting,
-        each new job state is printed once; pass `on_progress` to render
-        progress yourself, or `on_progress=lambda _: None` for silence.
+        a progress bar shows each step (each new state is printed once where
+        the output is not a terminal or a notebook); pass `on_progress` to
+        render progress yourself, or `on_progress=lambda _: None` for silence.
 
         `reference_time` is when item ages and sales are measured; the upload
         time by default.
@@ -316,7 +318,8 @@ class UnboxAIClient(_BaseClient):
         `keywords=True` also generates the search keywords and browse
         categories `sections` groups items by. Allow a longer `timeout`: it
         adds time before the catalog is ready, roughly an hour per 25,000
-        items. If it fails the catalog still goes live, without them.
+        items. If it fails the catalog still goes live, without them. Off by
+        default; `add_keywords` generates them for the catalog later.
         """
         return self.catalogs.embed(
             Path(path),
@@ -357,6 +360,36 @@ class UnboxAIClient(_BaseClient):
         return self.catalogs.add_items(
             Path(path),
             catalog_id=catalog_id,
+            wait=wait,
+            interval=interval,
+            timeout=timeout,
+            on_progress=on_progress,
+            startup_grace=startup_grace,
+        )
+
+    def add_keywords(
+        self,
+        catalog_id: str,
+        *,
+        wait: bool = False,
+        interval: float = 5.0,
+        timeout: float = 4 * 3600.0,
+        on_progress: Optional[Callable[[JobStatus], None]] = None,
+        startup_grace: float = 120.0,
+    ) -> AddKeywordsJobDetails:
+        """Generate the search keywords and browse categories `sections`
+        groups items by, for a catalog embedded without them.
+
+        Nothing is re-embedded, and the catalog keeps serving while the job
+        runs; it takes roughly an hour per 25,000 items. Once the job is ready
+        the catalog serves with keywords. If it fails, the catalog stays as it
+        was. Uploading the catalog again with `embed` replaces the keywords;
+        pass `keywords=True` there to keep them.
+
+        `wait` and the arguments after it work as for `embed`.
+        """
+        return self.catalogs.add_keywords(
+            catalog_id,
             wait=wait,
             interval=interval,
             timeout=timeout,
@@ -572,6 +605,27 @@ class AsyncUnboxAIClient(_BaseClient):
         return await self.catalogs.add_items(
             Path(path),
             catalog_id=catalog_id,
+            wait=wait,
+            interval=interval,
+            timeout=timeout,
+            on_progress=on_progress,
+            startup_grace=startup_grace,
+        )
+
+    async def add_keywords(
+        self,
+        catalog_id: str,
+        *,
+        wait: bool = False,
+        interval: float = 5.0,
+        timeout: float = 4 * 3600.0,
+        on_progress: Optional[Callable[[JobStatus], None]] = None,
+        startup_grace: float = 120.0,
+    ) -> AddKeywordsJobDetails:
+        """Generate keywords for a catalog embedded without them; see
+        `UnboxAIClient.add_keywords`."""
+        return await self.catalogs.add_keywords(
+            catalog_id,
             wait=wait,
             interval=interval,
             timeout=timeout,

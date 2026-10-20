@@ -152,6 +152,12 @@ class AddItemsJobDetails(EmbedJobDetails):
     products: int
 
 
+class AddKeywordsJobDetails(BaseModel):
+    job_id: str
+    catalog_id: str
+    catalog_name: str
+
+
 class CatalogSummary(BaseModel):
     catalog_id: str
     # display label derived from the uploaded file name, server-side
