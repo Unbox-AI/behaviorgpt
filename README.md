@@ -185,7 +185,7 @@ A history is a list of three kinds of event:
 - `View(item_id)`: the person looked at an item. Any sign of interest counts as a view: a click, a like, a save, an item added to a cart.
 - `Order([item_id, ...])`: a finished purchase of those items. Only which items were bought matters; quantities do not change results.
 
-The names come from a store, but they work for any catalog: map your users' actions by meaning. In Curate my wall, "look closer" and "hang it on the wall" both count as views. To leave something out, such as an item the person removed, leave it out of the list.
+The names come from a store, but they work for any catalog: map your users' actions by meaning. In Curate my wall, "look closer" is a view and "hang it on the wall" is an order, since hanging a work means choosing it. To leave something out, such as an item the person removed, leave it out of the list: taking a work down drops it from the history the app sends.
 
 `complete` predicts what the person looks at next. With `predict="purchase"` it predicts what else goes in the same purchase as the current session's items instead; that needs a history that does not end in a search.
 
