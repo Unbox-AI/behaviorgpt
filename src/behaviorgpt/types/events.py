@@ -67,7 +67,7 @@ class AddToCart(_ItemEvent):
 
     def __init__(self, item: Optional[str] = None, **data):
         warnings.warn(
-            "`AddToCart` is deprecated and will be removed in 0.6: the model reads "
+            "`AddToCart` is deprecated and will be removed in 0.7: the model reads "
             "it the same as `View`. Send a `View`, and list what was bought in "
             "`Order([...])`",
             DeprecationWarning,
@@ -81,7 +81,7 @@ class RemoveFromCart(_ItemEvent):
 
     def __init__(self, item: Optional[str] = None, **data):
         warnings.warn(
-            "`RemoveFromCart` is deprecated and will be removed in 0.6: it does not "
+            "`RemoveFromCart` is deprecated and will be removed in 0.7: it does not "
             "change results. Leave the item out of `Order([...])` instead",
             DeprecationWarning,
             stacklevel=2,
@@ -112,7 +112,7 @@ class Order(BaseModel):
             warnings.warn(
                 "`Order`'s first argument is now the list of items bought; pass "
                 "`cart_id=` by name. A single string is still read as the cart id "
-                "until 0.6",
+                "until 0.7",
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -123,7 +123,7 @@ class Order(BaseModel):
 
         if items is None and "items" not in data:
             warnings.warn(
-                "`Order()` without items is deprecated and will be removed in 0.6: "
+                "`Order()` without items is deprecated and will be removed in 0.7: "
                 "list what was bought, `Order([item, ...])`",
                 DeprecationWarning,
                 stacklevel=2,
