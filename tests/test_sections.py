@@ -124,6 +124,85 @@ def test_a_sections_error_raises():
     assert exc.value.status_code == 404
 
 
+@pytest.mark.parametrize(
+    "options, name",
+    [
+        ({"max_sections": 0}, "max_sections"),
+        ({"max_sections": 16}, "max_sections"),
+        ({"max_items_per_section": 0}, "max_items_per_section"),
+        ({"max_items_per_section": 101}, "max_items_per_section"),
+        ({"min_items_per_section": -1}, "min_items_per_section"),
+    ],
+)
+def test_limits_outside_the_server_s_range_fail_before_sending(options, name):
+    client, requests = mock(UnboxAIClient)
+
+    with pytest.raises(ValueError, match=name):
+        client.sections([Search("coats")], **options)
+    assert requests == []
+
+
+def test_the_largest_limits_are_sent():
+    client, requests = mock(UnboxAIClient)
+
+    client.sections([Search("coats")], max_sections=15, max_items_per_section=100)
+
+    body = json.loads(requests[0].content)
+    assert (body["max_sections"], body["max_products_per_section"]) == (15, 100)
+
+
+# what the server answers when a recommendations request has a bad filter: an
+# entry per request shape it tried, each echoing the request
+SHAPE = (
+    "function-after[validate_user_intent(),"
+    " function-after[check_user_id_xor_history(), {}]]"
+)
+REJECTED = {
+    "detail": [
+        {
+            "type": "value_error",
+            "loc": ["body", SHAPE.format("SearchSectionsRequest")],
+            "msg": "Value error, No query provided, falling back to recommendations.",
+            "input": {"history": ["..."]},
+        },
+        {
+            "type": "value_error",
+            "loc": ["body", SHAPE.format("RecommendationsSectionsRequest"), "filters"],
+            "msg": "Value error, unknown or unsupported operator: $in",
+            "input": {"id": {"$in": ["a", "b"]}},
+        },
+    ]
+}
+
+
+def test_a_rejected_request_names_the_field_at_fault():
+    client, _ = mock(UnboxAIClient, httpx.Response(422, json=REJECTED))
+
+    with pytest.raises(UnboxAIError) as exc:
+        client.sections([View("sku-1")], filters={"id": {"$in": ["a", "b"]}})
+
+    assert str(exc.value) == (
+        "API Error: filters: unknown or unsupported operator: $in"
+    )
+    assert exc.value.status_code == 422
+
+
+def test_a_validation_error_without_shapes_keeps_every_entry():
+    detail = [
+        {"loc": ["body", "limit"], "msg": "Input should be less than or equal to 100"},
+        {"loc": ["body"], "msg": "Value error, Offset + limit cannot exceed 10,000"},
+    ]
+    client, _ = mock(UnboxAIClient, httpx.Response(422, json={"detail": detail}))
+
+    with pytest.raises(UnboxAIError) as exc:
+        client.sections([Search("coats")])
+
+    assert str(exc.value) == (
+        "API Error: limit: Input should be less than or equal to 100;"
+        " Offset + limit cannot exceed 10,000"
+    )
+
+
 def test_the_async_client_sends_the_same_request():
     sync_client, sync_requests = mock(UnboxAIClient)
     async_client, async_requests = mock(AsyncUnboxAIClient)

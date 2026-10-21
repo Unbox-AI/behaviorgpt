@@ -310,6 +310,10 @@ class UnboxAIClient(_BaseClient):
         keywords: `retail_catalog` has them, and a catalog of your own has
         them if it was embedded with `keywords=True`; without them the list
         is empty.
+
+        `max_sections` can be at most 15 and `max_items_per_section` at most
+        100. Each item's `data` holds its generated search terms in
+        `top_terms`, best first.
         """
         body, headers = self._sections_request(
             history,
@@ -345,7 +349,7 @@ class UnboxAIClient(_BaseClient):
 
         `keywords=True` also generates the search keywords and browse
         categories `sections` groups items by. Allow a longer `timeout`: it
-        adds time before the catalog is ready, roughly an hour per 25,000
+        adds time before the catalog is ready, about 2 hours per 20,000
         items. If it fails the catalog still goes live, without them. Off by
         default; `add_keywords` generates them for the catalog later.
         """
@@ -409,7 +413,8 @@ class UnboxAIClient(_BaseClient):
         groups items by, for a catalog embedded without them.
 
         Nothing is re-embedded, and the catalog keeps serving while the job
-        runs; it takes roughly an hour per 25,000 items. Once the job is ready
+        runs; it takes about 2 hours per 20,000 items, so the default
+        `timeout` of 4 hours covers about 35,000. Once the job is ready
         the catalog serves with keywords. If it fails, the catalog stays as it
         was. Uploading the catalog again with `embed` replaces the keywords;
         pass `keywords=True` there to keep them.

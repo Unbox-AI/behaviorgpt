@@ -165,11 +165,13 @@ Or generate them during the upload, so the catalog goes live with them:
 job = client.embed(path, keywords=True, wait=True, timeout=4 * 3600.0)
 ```
 
-- Keyword generation takes roughly an hour per 25,000 items. `add_keywords` waits up to 4 hours by default; with `embed(..., keywords=True)`, allow a longer `timeout`.
+- Keyword generation runs at roughly 150 items a minute: a 20,000-item catalog took about 2 hours 20 minutes. `add_keywords` waits up to 4 hours by default, enough for about 35,000 items; for a larger catalog, or with `embed(..., keywords=True)`, pass a longer `timeout`.
 - `add_keywords` re-embeds nothing, and the catalog keeps answering queries while it runs. The keywords appear when the job is ready. If it fails, the catalog stays as it was.
 - With `embed(..., keywords=True)`, if keyword generation fails, the catalog still goes live, without keywords. The job's status then reads `keywords_skipped`, with the reason in `keywords_error`, and `sections` returns an empty list for that catalog.
 - Uploading the catalog again with `embed` replaces its keywords. Pass `keywords=True` there, or call `add_keywords` again, to keep them.
 - A history that ends in a search groups that search's results; any other history groups recommendations.
+- `max_sections` can be at most 15 and `max_items_per_section` at most 100.
+- Each item in a section carries its keywords in `item.data`: `top_terms`, the search terms generated for it, each with a score, best first; and `top_terms_mapped`, the section titles it fits. Items from `complete` carry `top_terms_mapped` only.
 - Items added or replaced with `add_items` have no keywords until you call `add_keywords` again or upload the catalog with `embed(..., keywords=True)`; until then they are left out of sections.
 - One `add_items` or `add_keywords` job runs per catalog at a time, and the catalog cannot be refreshed or deleted while it runs.
 
