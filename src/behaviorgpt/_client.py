@@ -4,7 +4,7 @@ import warnings
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Callable, Optional, Sequence, cast
+from typing import Any, Callable, Literal, Optional, Sequence, cast
 from uuid import uuid4
 
 import httpx
@@ -26,6 +26,7 @@ from behaviorgpt.types import (
     Item,
     JobStatus,
     Order,
+    RemoveFromCart,
     Search,
     SectionsResponse,
     SessionEvent,
@@ -34,12 +35,15 @@ from behaviorgpt.types import (
     UserEvent,
     UserHistoryInput,
 )
+from behaviorgpt.types.http import RecommendationType
 
 # An embed upload streams the whole parquet, and the API answers only once the
 # file is stored and queued: httpx's 5 s default is too short for both.
 DEFAULT_HTTP_TIMEOUT = httpx.Timeout(120.0, connect=10.0, write=300.0)
 DEFAULT_BASE_URL = "https://behaviorgpt-northeurope.api.unboxai.com/v1"
 DEFAULT_TRAILING_SEARCHES = 3
+
+Predict = Literal["view", "purchase"]
 
 
 class _BaseClient:
@@ -80,14 +84,22 @@ class _BaseClient:
         filters: Optional[dict[str, Any]],
         register_event: bool,
         max_trailing_searches: int = DEFAULT_TRAILING_SEARCHES,
+        predict: Predict = "view",
     ) -> tuple[bool, UnboxAIRequest, dict]:
         """The request `complete` sends, whether it goes to search, and its headers."""
+        if predict not in ("view", "purchase"):
+            raise ValueError(f"predict must be 'view' or 'purchase', not {predict!r}")
         active_catalog, request_headers = self._catalog_headers(catalog_id)
 
         history_events = self.__from_sequence(active_catalog, history)
         last_event = self._get_last_event(history)
 
         if isinstance(last_event, Search):
+            if predict == "purchase":
+                raise ValueError(
+                    "predict='purchase' needs a history that does not end in a "
+                    "search: search ranks the next item viewed"
+                )
             req = self.requester.make(
                 query=last_event.query,
                 history=history_events[:-1],
@@ -107,6 +119,9 @@ class _BaseClient:
             offset=offset,
             filters=filters,
             register_event=register_event,
+            recommendation_type=(
+                RecommendationType(name="buy_next") if predict == "purchase" else None
+            ),
         )
         return False, req, request_headers
 
@@ -150,6 +165,11 @@ class _BaseClient:
             for i, ev in enumerate(session_events):
                 if isinstance(ev, AddToCart):
                     cart_state[ev.item] += 1
+                elif isinstance(ev, RemoveFromCart):
+                    if cart_state[ev.item] > 1:
+                        cart_state[ev.item] -= 1
+                    else:
+                        cart_state.pop(ev.item)
                 elif isinstance(ev, Order):
                     if not getattr(ev, "items", None):
                         ev.cart_id = current_cart_id
@@ -244,8 +264,15 @@ class UnboxAIClient(_BaseClient):
         filters: Optional[dict[str, Any]] = None,
         register_event: bool = False,
         max_trailing_searches: int = DEFAULT_TRAILING_SEARCHES,
+        predict: Predict = "view",
     ) -> UnboxAIResponse:
         """Rank the items most likely to come after `history`.
+
+        `predict` picks the question: `"view"`, the next item this person looks
+        at, or `"purchase"`, what else goes in the same purchase as the items
+        in the current session ("bought together"). For what they want after
+        buying something, keep `"view"` and end the history with
+        `Order([...])`. A history that ends in a search can only use `"view"`.
 
         When the history ends in searches, up to `max_trailing_searches` of
         them in a row, the query included, reach the model, so `nike` then
@@ -259,6 +286,7 @@ class UnboxAIClient(_BaseClient):
             filters,
             register_event,
             max_trailing_searches,
+            predict,
         )
         endpoint = self.search if is_search else self.recommendations
         return endpoint.create(payload=req, headers=headers)
@@ -525,6 +553,7 @@ class AsyncUnboxAIClient(_BaseClient):
         filters: Optional[dict[str, Any]] = None,
         register_event: bool = False,
         max_trailing_searches: int = DEFAULT_TRAILING_SEARCHES,
+        predict: Predict = "view",
     ) -> UnboxAIResponse:
         """Rank the items most likely to come after `history`; see
         `UnboxAIClient.complete`."""
@@ -536,6 +565,7 @@ class AsyncUnboxAIClient(_BaseClient):
             filters,
             register_event,
             max_trailing_searches,
+            predict,
         )
         endpoint = self.search if is_search else self.recommendations
         return await endpoint.create(payload=req, headers=headers)

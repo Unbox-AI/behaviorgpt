@@ -7,7 +7,7 @@ import json
 import httpx
 import pytest
 
-from behaviorgpt import AsyncUnboxAIClient, Search, UnboxAIError, View
+from behaviorgpt import AsyncUnboxAIClient, Order, Search, UnboxAIError, View
 from behaviorgpt.resources.catalogs import AsyncCatalogs
 
 from .test_embed import BASE, UPLOADED, status
@@ -100,6 +100,28 @@ def test_recommendations_leave_out_the_search_count():
     client, requests = mock_client()
     asyncio.run(client.complete([View("sku-1")]))
     assert "max_trailing_searches" not in json.loads(requests[0].content)
+
+
+def test_predict_purchase_asks_for_buy_next():
+    client, requests = mock_client()
+    asyncio.run(client.complete([View("sku-1")], predict="purchase"))
+    assert requests[0].url.path == "/v1/vector/recommendations"
+    assert json.loads(requests[0].content)["type"] == {"name": "buy_next"}
+
+
+def test_predict_view_leaves_the_type_to_the_server():
+    client, requests = mock_client()
+    asyncio.run(client.complete([View("sku-1"), Order(["sku-1"])]))
+    assert "type" not in json.loads(requests[0].content)
+
+
+def test_predict_purchase_refuses_a_search():
+    client, requests = mock_client()
+    with pytest.raises(ValueError, match="does not end in a search"):
+        asyncio.run(client.complete([Search("shoes")], predict="purchase"))
+    with pytest.raises(ValueError, match="'view' or 'purchase'"):
+        asyncio.run(client.complete([View("sku-1")], predict="buy"))
+    assert requests == []
 
 
 def test_similar_items_hits_the_similar_products_endpoint():
