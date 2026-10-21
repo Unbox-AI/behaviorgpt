@@ -195,8 +195,6 @@ client.complete([View(shoe)], predict="purchase")  # bought together
 client.complete([View(shoe), Order([shoe])])       # what they want after buying it
 ```
 
-`AddToCart`, `RemoveFromCart` and `Order()` without items still work but are deprecated, and will be removed in 0.6. The model reads `AddToCart` the same as `View`, and `RemoveFromCart` does not change results; until 0.6, a bare `Order()` buys what was added to the cart and not removed.
-
 ## Demo and examples
 
 More on the three apps shown at the top of this page:
