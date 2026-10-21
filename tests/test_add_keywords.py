@@ -3,6 +3,7 @@
 
 import asyncio
 import io
+import json
 import sys
 
 import httpx
@@ -114,6 +115,28 @@ def test_add_keywords_async():
     assert job.job_id == JOB
     assert calls[0].url.path == f"/v1/catalogs/{CATALOG}/keywords"
     assert len(calls) == 3
+
+
+def test_fast_asks_for_the_fast_mode():
+    client, calls = sync_client()
+    client.add_keywords(CATALOG, fast=True)
+
+    (post,) = calls
+    assert post.headers["content-type"] == "application/json"
+    assert json.loads(post.content) == {"mode": "fast"}
+
+
+def test_fast_async():
+    async def run():
+        calls: list[httpx.Request] = []
+        client = AsyncUnboxAIClient("us", api_key="ubx_test", base_url=BASE)
+        client._http_client._transport = httpx.MockTransport(handler(calls, [READY]))
+        async with client:
+            await client.add_keywords(CATALOG, fast=True)
+        return calls
+
+    (post,) = asyncio.run(run())
+    assert json.loads(post.content) == {"mode": "fast"}
 
 
 # The progress bar

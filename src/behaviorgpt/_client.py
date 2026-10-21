@@ -403,6 +403,7 @@ class UnboxAIClient(_BaseClient):
         self,
         catalog_id: str,
         *,
+        fast: bool = False,
         wait: bool = False,
         interval: float = 5.0,
         timeout: float = 4 * 3600.0,
@@ -419,10 +420,16 @@ class UnboxAIClient(_BaseClient):
         was. Uploading the catalog again with `embed` replaces the keywords;
         pass `keywords=True` there to keep them.
 
+        `fast=True` asks the language model once per group of about 16
+        similar items instead of once per item: about 9 times faster, with
+        fewer keywords per item (about 3 instead of 9), so sections have less
+        to group by.
+
         `wait` and the arguments after it work as for `embed`.
         """
         return self.catalogs.add_keywords(
             catalog_id,
+            fast=fast,
             wait=wait,
             interval=interval,
             timeout=timeout,
@@ -651,6 +658,7 @@ class AsyncUnboxAIClient(_BaseClient):
         self,
         catalog_id: str,
         *,
+        fast: bool = False,
         wait: bool = False,
         interval: float = 5.0,
         timeout: float = 4 * 3600.0,
@@ -661,6 +669,7 @@ class AsyncUnboxAIClient(_BaseClient):
         `UnboxAIClient.add_keywords`."""
         return await self.catalogs.add_keywords(
             catalog_id,
+            fast=fast,
             wait=wait,
             interval=interval,
             timeout=timeout,
