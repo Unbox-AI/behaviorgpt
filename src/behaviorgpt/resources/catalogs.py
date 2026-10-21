@@ -314,6 +314,12 @@ def keywords_path(catalog_id: str) -> str:
     return f"/catalogs/{quote(catalog_id, safe='')}/keywords"
 
 
+def keywords_body(fast: bool) -> dict[str, Any]:
+    """The keywords request's body: none for the server's default mode, so
+    the request is the same as before modes existed."""
+    return {"json": {"mode": "fast"}} if fast else {}
+
+
 def items_path(catalog_id: str) -> str:
     if not catalog_id:
         raise ValueError("catalog_id is required to add items")
@@ -535,6 +541,7 @@ class Catalogs:
         self,
         catalog_id: str,
         *,
+        fast: bool = False,
         wait: bool = False,
         interval: float = 5.0,
         timeout: float = 4 * 3600.0,
@@ -547,9 +554,11 @@ class Catalogs:
 
         The catalog keeps serving while the job runs and gets the keywords
         once it is ready. If the job fails, the catalog stays as it was.
-        `wait` and the arguments after it work as for `embed`.
+        `fast` asks the language model once per group of similar items
+        instead of once per item. `wait` and the arguments after it work as
+        for `embed`.
         """
-        response = self._client.post(keywords_path(catalog_id))
+        response = self._client.post(keywords_path(catalog_id), **keywords_body(fast))
         job = AddKeywordsJobDetails(**handle_response(response))
 
         if wait:
@@ -723,13 +732,16 @@ class AsyncCatalogs:
         self,
         catalog_id: str,
         *,
+        fast: bool = False,
         wait: bool = False,
         interval: float = 5.0,
         timeout: float = 4 * 3600.0,
         on_progress: Optional[Callable[[JobStatus], None]] = None,
         startup_grace: float = 120.0,
     ) -> AddKeywordsJobDetails:
-        response = await self._client.post(keywords_path(catalog_id))
+        response = await self._client.post(
+            keywords_path(catalog_id), **keywords_body(fast)
+        )
         job = AddKeywordsJobDetails(**handle_response(response))
 
         if wait:
