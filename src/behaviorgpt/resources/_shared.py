@@ -24,6 +24,41 @@ def ranked_response(payload: UnboxAIRequest, data: dict) -> UnboxAIResponse:
     return UnboxAIResponse(**data, market=market_val)
 
 
+def describe_detail(detail):
+    """The API's error detail as text.
+
+    A validation error lists one entry per failing field, each echoing the
+    whole request; this keeps only `field: message`. When the server tries
+    several request shapes, as for sections, an entry without a field only
+    says which shape it ruled out, so those are dropped when another entry
+    names the field at fault.
+    """
+    if not (
+        isinstance(detail, list)
+        and detail
+        and all(isinstance(e, dict) and "msg" in e for e in detail)
+    ):
+        return detail
+
+    def field(entry: dict) -> str:
+        parts = [str(p) for p in entry.get("loc", [])[1:]]
+        return ".".join(p for p in parts if "[" not in p)
+
+    def from_shape(entry: dict) -> bool:
+        return any("[" in str(p) for p in entry.get("loc", []))
+
+    named = any(field(e) for e in detail)
+    lines = []
+    for entry in detail:
+        if named and not field(entry) and from_shape(entry):
+            continue
+        msg = str(entry["msg"]).removeprefix("Value error, ")
+        line = f"{field(entry)}: {msg}" if field(entry) else msg
+        if line not in lines:
+            lines.append(line)
+    return "; ".join(lines)
+
+
 def handle_response(response: httpx.Response):
     if response.status_code < 400:
         if response.status_code == 204:  # No Content
@@ -37,7 +72,7 @@ def handle_response(response: httpx.Response):
     except ValueError:
         body = None
     if isinstance(body, dict) and "detail" in body:
-        error_data = body["detail"]
+        error_data = describe_detail(body["detail"])
     else:
         error_data = response.text or "Unknown Error"
 

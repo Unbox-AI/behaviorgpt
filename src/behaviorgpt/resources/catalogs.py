@@ -1,10 +1,11 @@
 import ast
 import asyncio
+import sys
 import time
 import warnings
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, TextIO
 from urllib.parse import quote
 
 import httpx
@@ -17,12 +18,14 @@ from behaviorgpt._exceptions import UnboxAIError
 from behaviorgpt.resources._shared import handle_response
 from behaviorgpt.types import (
     AddItemsJobDetails,
+    AddKeywordsJobDetails,
     CatalogSummary,
     EmbedJobDetails,
     JobStatus,
     SimilarItemsRequest,
     UnboxAIResponse,
 )
+from behaviorgpt.types.http import STAGE_LABELS
 
 # The three states the catalogs.status CHECK constraint allows, server-side.
 PENDING_STATUS = "pending"
@@ -197,12 +200,118 @@ class ProgressPrinter:
             self.last = line
 
 
-def upload_form(path: Path, reference_time: Optional[datetime | str]) -> dict:
+def _interactive(stream: TextIO) -> bool:
+    """A terminal or a notebook, where `\\r` rewrites the line. Not a log
+    file, a CI job or a pipe, where it would leave every frame behind."""
+    if "ipykernel" in sys.modules:
+        return True
+    isatty = getattr(stream, "isatty", None)
+    return bool(isatty and isatty())
+
+
+def _duration(seconds: float) -> str:
+    seconds = int(seconds)
+    if seconds >= 3600:
+        return f"{seconds // 3600}h{seconds % 3600 // 60:02d}m"
+    if seconds >= 60:
+        return f"{seconds // 60}m{seconds % 60:02d}s"
+    return f"{seconds}s"
+
+
+class ProgressBar:
+    """Default `on_progress` callback: a progress bar with the step's items
+    done, its share and the time left, redrawn in place, for example
+
+        keywords generating |██████░░░░░░░░░░░░|  33%  400/1200  2m10s left
+
+    Each step (embed fetching, keywords generating, ...) gets its own line,
+    finished when the next one starts. A step that reports no counts shows
+    how long it has run instead. Where the output is not a terminal or a
+    notebook, each new state is printed once, as `ProgressPrinter` does.
+    """
+
+    WIDTH = 24
+
+    def __init__(self, stream: Optional[TextIO] = None) -> None:
+        self.stream = stream
+        self.lines = ProgressPrinter()
+        self.step: Optional[tuple] = None
+        self.step_started = 0.0
+        # the first count seen in this step, as (time, done), for the rate
+        self.first: Optional[tuple[float, int]] = None
+        self.drawn = 0
+
+    @property
+    def out(self) -> TextIO:
+        return self.stream or sys.stdout
+
+    def _blocks(self) -> tuple[str, str]:
+        try:
+            "█░".encode(getattr(self.out, "encoding", None) or "ascii")
+        except (UnicodeEncodeError, LookupError):
+            return "#", "-"
+        return "█", "░"
+
+    def render(self, status: JobStatus, now: float) -> str:
+        step = (status.stage, status.phase or status.stage_state)
+        if step != self.step:
+            self.step, self.step_started, self.first = step, now, None
+        done, total = status.done, status.total
+        label = STAGE_LABELS.get(status.stage or "", status.stage or status.status)
+        name = f"{label} {status.phase or status.stage_state or ''}".strip()
+        if status.status.lower() in (READY_STATUS, FAILED_STATUS):
+            return status.describe()
+        if done is None or not total:
+            return f"{status.describe()}  {_duration(now - self.step_started)}"
+        if self.first is None or done < self.first[1]:
+            self.first = (now, done)
+        share = min(max(done / total, 0.0), 1.0)
+        full, empty = self._blocks()
+        filled = round(share * self.WIDTH)
+        bar = full * filled + empty * (self.WIDTH - filled)
+        line = f"{name} |{bar}| {share:4.0%}  {done}/{total}"
+        since, done_then = self.first
+        if done > done_then and now > since and done < total:
+            left = (total - done) * (now - since) / (done - done_then)
+            line += f"  {_duration(left)} left"
+        return line
+
+    def __call__(self, status: JobStatus) -> None:
+        if not _interactive(self.out):
+            self.lines(status)
+            return
+        now = time.monotonic()
+        previous = self.step
+        line = self.render(status, now)
+        if previous is not None and self.step != previous and self.drawn:
+            self.out.write("\n")
+            self.drawn = 0
+        self.out.write("\r" + line.ljust(self.drawn))
+        self.drawn = len(line)
+        state = status.status.lower()
+        if state == READY_STATUS or (state == FAILED_STATUS and status.error):
+            self.out.write("\n")
+            self.drawn = 0
+        self.out.flush()
+
+
+def upload_form(
+    path: Path, reference_time: Optional[datetime | str], keywords: bool = False
+) -> dict:
     """Check the parquet and return the upload's form fields."""
     check_catalog_schema(path)
-    if reference_time is None:
-        return {}
-    return {"reference_time": format_reference_time(reference_time)}
+    form = {}
+    if reference_time is not None:
+        form["reference_time"] = format_reference_time(reference_time)
+    if keywords:
+        form["keywords"] = "true"
+    return form
+
+
+def keywords_path(catalog_id: str) -> str:
+    if not catalog_id:
+        raise ValueError("catalog_id is required to add keywords")
+    return f"/catalogs/{quote(catalog_id, safe='')}/keywords"
 
 
 def items_path(catalog_id: str) -> str:
@@ -260,7 +369,7 @@ class JobWatcher:
         self.job_id = job_id
         self.interval = interval
         self.timeout = timeout
-        self.on_progress = on_progress or ProgressPrinter()
+        self.on_progress = on_progress or ProgressBar()
         self.startup_grace = startup_grace
         self.failed_grace = failed_grace
         self.started = time.monotonic()
@@ -309,7 +418,7 @@ class JobWatcher:
                 if status.error or now - self.failed_since >= self.failed_grace:
                     reason = f": {status.error}" if status.error else ""
                     raise UnboxAIError(
-                        f"Embed job {self.job_id} failed{reason}",
+                        f"Job {self.job_id} failed{reason}",
                         response=status.model_dump(),
                     )
             else:
@@ -317,8 +426,7 @@ class JobWatcher:
 
         if time.monotonic() + self.interval > self.deadline:
             message = (
-                f"Embed job {self.job_id} still '{self.last_state}' "
-                f"after {self.timeout:g}s"
+                f"Job {self.job_id} still '{self.last_state}' after {self.timeout:g}s"
             )
             if self.read_error:
                 message += f"; last status read failed: {self.read_error}"
@@ -341,6 +449,7 @@ class Catalogs:
         on_progress: Optional[Callable[[JobStatus], None]] = None,
         startup_grace: float = 120.0,
         reference_time: Optional[datetime | str] = None,
+        keywords: bool = False,
     ) -> EmbedJobDetails:
         """Upload the parquet at `path`.
 
@@ -350,9 +459,15 @@ class Catalogs:
         With `wait=True`, block until the job reaches a terminal state,
         polling every `interval` seconds and giving up after `timeout`.
         `on_progress` is called with each status read while waiting; by
-        default each new state is printed once (see `ProgressPrinter`).
+        default a progress bar is drawn (see `ProgressBar`).
+
+        `keywords=True` also generates search keywords and browse categories
+        for the items, which `sections` groups by. It adds time before the
+        catalog is ready, so allow a longer `timeout`. If generation fails,
+        the catalog still goes live, without keywords: the job status then
+        reads `keywords_skipped`, with the reason in `keywords_error`.
         """
-        form = upload_form(path, reference_time)
+        form = upload_form(path, reference_time, keywords)
 
         with open(path, "rb") as f:
             response = self._client.post(
@@ -416,6 +531,38 @@ class Catalogs:
 
         return job
 
+    def add_keywords(
+        self,
+        catalog_id: str,
+        *,
+        wait: bool = False,
+        interval: float = 5.0,
+        timeout: float = 4 * 3600.0,
+        on_progress: Optional[Callable[[JobStatus], None]] = None,
+        startup_grace: float = 120.0,
+    ) -> AddKeywordsJobDetails:
+        """Generate search keywords and browse categories for the ready
+        catalog `catalog_id`, from the items it already has; nothing is
+        re-embedded.
+
+        The catalog keeps serving while the job runs and gets the keywords
+        once it is ready. If the job fails, the catalog stays as it was.
+        `wait` and the arguments after it work as for `embed`.
+        """
+        response = self._client.post(keywords_path(catalog_id))
+        job = AddKeywordsJobDetails(**handle_response(response))
+
+        if wait:
+            self.wait_for_job(
+                job.job_id,
+                interval=interval,
+                timeout=timeout,
+                on_progress=on_progress,
+                startup_grace=startup_grace,
+            )
+
+        return job
+
     def get_job_status(self, job_id: str) -> JobStatus:
         """Read the job state once, without blocking."""
         response = self._client.get(f"/embed-catalog/{job_id}")
@@ -434,9 +581,10 @@ class Catalogs:
         """Block until the job succeeds; raise on failure or timeout.
 
         `on_progress` is called with every status read, terminal one included.
-        It defaults to a `ProgressPrinter`, which prints each new state once;
-        pass your own callable to render progress differently, or
-        `lambda _: None` for silence.
+        It defaults to a `ProgressBar`, which draws a bar in a terminal or a
+        notebook and prints each new state once elsewhere; pass
+        `ProgressPrinter()` for plain lines, your own callable to render
+        progress differently, or `lambda _: None` for silence.
 
         A job reads as 404 until a worker picks it up and writes its first
         state, which can be seconds after the upload returns (or longer if the
@@ -515,8 +663,9 @@ class AsyncCatalogs:
         on_progress: Optional[Callable[[JobStatus], None]] = None,
         startup_grace: float = 120.0,
         reference_time: Optional[datetime | str] = None,
+        keywords: bool = False,
     ) -> EmbedJobDetails:
-        form = upload_form(path, reference_time)
+        form = upload_form(path, reference_time, keywords)
 
         with open(path, "rb") as f:
             response = await self._client.post(
@@ -558,6 +707,30 @@ class AsyncCatalogs:
             )
 
         job = AddItemsJobDetails(**handle_response(response))
+
+        if wait:
+            await self.wait_for_job(
+                job.job_id,
+                interval=interval,
+                timeout=timeout,
+                on_progress=on_progress,
+                startup_grace=startup_grace,
+            )
+
+        return job
+
+    async def add_keywords(
+        self,
+        catalog_id: str,
+        *,
+        wait: bool = False,
+        interval: float = 5.0,
+        timeout: float = 4 * 3600.0,
+        on_progress: Optional[Callable[[JobStatus], None]] = None,
+        startup_grace: float = 120.0,
+    ) -> AddKeywordsJobDetails:
+        response = await self._client.post(keywords_path(catalog_id))
+        job = AddKeywordsJobDetails(**handle_response(response))
 
         if wait:
             await self.wait_for_job(

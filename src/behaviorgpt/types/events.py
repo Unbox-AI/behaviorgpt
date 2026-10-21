@@ -65,12 +65,38 @@ class View(_ItemEvent):
 class AddToCart(_ItemEvent):
     type: Literal["addToCart"] = "addToCart"
 
+    def __init__(self, item: Optional[str] = None, **data):
+        warnings.warn(
+            "`AddToCart` is deprecated and will be removed in 0.6: the model reads "
+            "it the same as `View`. Send a `View`, and list what was bought in "
+            "`Order([...])`",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        super().__init__(item, **data)
+
 
 class RemoveFromCart(_ItemEvent):
     type: Literal["removeFromCart"] = "removeFromCart"
 
+    def __init__(self, item: Optional[str] = None, **data):
+        warnings.warn(
+            "`RemoveFromCart` is deprecated and will be removed in 0.6: it does not "
+            "change results. Leave the item out of `Order([...])` instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        super().__init__(item, **data)
+
+
+OrderItem = Union[str, CartItem, Tuple[str, int]]
+
 
 class Order(BaseModel):
+    """A finished purchase of `items`: item ids, `(id, quantity)` pairs or
+    `CartItem`s. The model reads only which items were bought; quantities and
+    `cart_id` do not change results."""
+
     type: Literal["order"] = "order"
 
     cart_id: Optional[str] = None
@@ -78,25 +104,43 @@ class Order(BaseModel):
 
     def __init__(
         self,
+        items: Optional[Union[str, Sequence[OrderItem]]] = None,
         cart_id: Optional[str] = None,
-        items: Optional[List[Union[CartItem, Tuple[str, int]]]] = None,
         **data,
     ):
+        if isinstance(items, str):
+            warnings.warn(
+                "`Order`'s first argument is now the list of items bought; pass "
+                "`cart_id=` by name. A single string is still read as the cart id "
+                "until 0.6",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            items, cart_id = cart_id, items
+
         if cart_id is not None:
             data["cart_id"] = cart_id
 
-        if items is not None:
-            parsed_items = []
-            for entry in items:
-                if isinstance(entry, tuple):
-                    item_id, quantity = entry
-                    parsed_items.append(CartItem(item_id, quantity))
-                else:
-                    parsed_items.append(entry)
-
-            data["items"] = parsed_items
+        if items is None and "items" not in data:
+            warnings.warn(
+                "`Order()` without items is deprecated and will be removed in 0.6: "
+                "list what was bought, `Order([item, ...])`",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        elif items is not None:
+            data["items"] = [_order_item(entry) for entry in items]
 
         super().__init__(**data)
+
+
+def _order_item(entry: OrderItem) -> CartItem:
+    if isinstance(entry, str):
+        return CartItem(entry, 1)
+    if isinstance(entry, tuple):
+        item_id, quantity = entry
+        return CartItem(item_id, quantity)
+    return entry
 
 
 UserEvent = Union[Search, AddToCart, View, RemoveFromCart, Order]

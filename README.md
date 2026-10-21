@@ -78,7 +78,7 @@ Create one client and reuse it, for example for the lifetime of your server: `as
 
 ## How it works
 
-- **One call, many features.** Every request asks the same question: given what this person did, which items are they most likely to act on next? The history picks the feature. End it with a `Search` for search results, with a `View` for "more like this", with an `Order` for what is bought next; leave it empty for a cold start.
+- **One call, many features.** Every request asks the same question: given what this person did, which items are they most likely to act on next? The history picks the feature. End it with a `Search` for search results, with a `View` for "more like this", with an `Order` for what they want after buying; leave it empty for a cold start. `predict="purchase"` asks what else goes in the same purchase instead of what they look at next, for a "bought together" shelf.
 - **The whole sequence counts.** The model reads the history in order, so the same query means different things after different actions: "gloves" after "golf clubs" returns golf gloves. `market` on the client says where the user is, which helps most when the history is short.
 - **Items are read from their content, not their ids.** Each item is embedded from its name, brand, categories, image and price. That is why the model can rank a catalog it has never seen as soon as it is uploaded, with no interaction data and no training, and why those columns decide how well it does ([catalog format](https://github.com/Unbox-AI/behaviorgpt/blob/main/docs/catalog-format.md)).
 - **One pass per request.** Item vectors are computed once when the catalog is embedded, so ranking the whole catalog costs one forward pass over the history rather than one per item: the model itself takes under a millisecond per query, and most of an API call's time is the network.
@@ -117,6 +117,8 @@ job = client.embed(path, wait=True, timeout=1800.0)
 client.complete([Search("...")], catalog_id=job.catalog_id)
 ```
 
+With `wait=True`, a progress bar shows each step of the job and the time left; where the output is not a terminal or a notebook, each new state is printed once instead. Pass `on_progress=lambda _: None` for silence.
+
 ### Adding or updating items
 
 To add items to an embedded catalog, or change some of its items, upload just those items in the same format. Only they are embedded, so the job takes about as long as the file is big, and the catalog keeps answering queries while it runs:
@@ -143,13 +145,57 @@ client.delete_catalog("cat_...")
 
 - `list_catalogs()` returns your own catalogs, in any status, and the shared ones that are ready. `owned` marks your own.
 - `delete_catalog()` removes one of your catalogs with its items and frees its slot. It cannot be undone.
-- Deleting another key's catalog fails with status 404, the same as an unknown id. While an `embed` or `add_items` job runs for the catalog, deleting fails with status 409; try again once the job is ready or failed.
+- Deleting another key's catalog fails with status 404, the same as an unknown id. While an `embed`, `add_items` or `add_keywords` job runs for the catalog, deleting fails with status 409; try again once the job is ready or failed.
+
+### Keywords and sections
+
+Sections group the items the model ranks under titles such as "black coats", best section first. They are built from item keywords, which `embed` does not generate by default because they take time. Generate them for an embedded catalog with `add_keywords`:
+
+```python
+job = client.embed(path, wait=True, timeout=1800.0)
+client.add_keywords(job.catalog_id, wait=True)
+response = client.sections([Search("coat")], catalog_id=job.catalog_id)
+for section in response.sections:
+    print(section.title, [item.data["name"] for item in section.items])
+```
+
+Or generate them during the upload, so the catalog goes live with them:
+
+```python
+job = client.embed(path, keywords=True, wait=True, timeout=4 * 3600.0)
+```
+
+- Keyword generation runs at roughly 150 items a minute: a 20,000-item catalog took about 2 hours 20 minutes. `add_keywords` waits up to 4 hours by default, enough for about 35,000 items; for a larger catalog, or with `embed(..., keywords=True)`, pass a longer `timeout`.
+- `add_keywords` re-embeds nothing, and the catalog keeps answering queries while it runs. The keywords appear when the job is ready. If it fails, the catalog stays as it was.
+- With `embed(..., keywords=True)`, if keyword generation fails, the catalog still goes live, without keywords. The job's status then reads `keywords_skipped`, with the reason in `keywords_error`, and `sections` returns an empty list for that catalog.
+- Uploading the catalog again with `embed` replaces its keywords. Pass `keywords=True` there, or call `add_keywords` again, to keep them.
+- A history that ends in a search groups that search's results; any other history groups recommendations.
+- `max_sections` can be at most 15 and `max_items_per_section` at most 100.
+- Each item in a section carries its keywords in `item.data`: `top_terms`, the search terms generated for it, each with a score, best first; and `top_terms_mapped`, the section titles it fits. Items from `complete` carry `top_terms_mapped` only.
+- Items added or replaced with `add_items` have no keywords until you call `add_keywords` again or upload the catalog with `embed(..., keywords=True)`; until then they are left out of sections.
+- One `add_items` or `add_keywords` job runs per catalog at a time, and the catalog cannot be refreshed or deleted while it runs.
 
 If mapping your data to the format is hard, open a coding agent in this directory and ask it to embed your catalog. The repo ships a skill at [`.claude/skills/embed-catalog/SKILL.md`](https://github.com/Unbox-AI/behaviorgpt/blob/main/.claude/skills/embed-catalog/SKILL.md) that walks the agent through mapping your columns, building and validating the parquet, checking image URLs, and uploading. Claude Code picks it up automatically; for other agents, point them at that file.
 
 ### Events
 
-A history is a list of `Search`, `View`, `AddToCart`, `RemoveFromCart` and `Order` events. The names come from a store because that is what the API accepts, but they work for any catalog: map your users' actions by meaning. Curate my wall sends "look closer" as `View`, "hang it on the wall" as `AddToCart` and "take it down" as `RemoveFromCart`.
+A history is a list of three kinds of event:
+
+- `Search("running shoes")`: a query.
+- `View(item_id)`: the person looked at an item. Any sign of interest counts as a view: a click, a like, a save, an item added to a cart.
+- `Order([item_id, ...])`: a finished purchase of those items. Only which items were bought matters; quantities do not change results.
+
+The names come from a store, but they work for any catalog: map your users' actions by meaning. In Curate my wall, "look closer" and "hang it on the wall" both count as views. To leave something out, such as an item the person removed, leave it out of the list.
+
+`complete` predicts what the person looks at next. With `predict="purchase"` it predicts what else goes in the same purchase as the current session's items instead; that needs a history that does not end in a search.
+
+```python
+client.complete([View(shoe)])                      # others also viewed
+client.complete([View(shoe)], predict="purchase")  # bought together
+client.complete([View(shoe), Order([shoe])])       # what they want after buying it
+```
+
+`AddToCart`, `RemoveFromCart` and `Order()` without items still work but are deprecated, and will be removed in 0.6. The model reads `AddToCart` the same as `View`, and `RemoveFromCart` does not change results; until 0.6, a bare `Order()` buys what was added to the cart and not removed.
 
 ## Demo and examples
 
