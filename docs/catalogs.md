@@ -54,6 +54,7 @@ job = client.embed(path, keywords=True, wait=True, timeout=4 * 3600.0)
 ```
 
 - Keyword generation runs at roughly 150 items a minute, so a 20,000-item catalog takes about 2 hours 20 minutes. `add_keywords` waits up to 4 hours by default, enough for about 35,000 items; for a larger catalog, or with `embed(..., keywords=True)`, pass a longer `timeout`.
+- `add_keywords(catalog_id, fast=True)` asks the language model once per group of about 16 similar items instead of once per item. It is about 9 times faster (10,000 items in about 3 to 4 minutes on our benchmark), but each item gets fewer keywords, about 3 instead of 9, so sections have less to group by.
 - `add_keywords` re-embeds nothing, and the catalog keeps answering queries while it runs. The keywords appear when the job is ready. If it fails, the catalog stays as it was.
 - With `embed(..., keywords=True)`, if keyword generation fails, the catalog still goes live, without keywords. The job's status then reads `keywords_skipped`, with the reason in `keywords_error`, and `sections` returns an empty list for that catalog.
 - Uploading the catalog again with `embed` replaces its keywords. Pass `keywords=True` there, or call `add_keywords` again, to keep them.
