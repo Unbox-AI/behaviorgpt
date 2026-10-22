@@ -315,9 +315,9 @@ def keywords_path(catalog_id: str) -> str:
 
 
 def keywords_body(fast: bool) -> dict[str, Any]:
-    """The keywords request's body: none for the server's default mode, so
-    the request is the same as before modes existed."""
-    return {"json": {"mode": "fast"}} if fast else {}
+    """The keywords request's body. It always names the mode, so the job
+    runs in the one asked for whatever the server's default."""
+    return {"json": {"mode": "fast" if fast else "product"}}
 
 
 def items_path(catalog_id: str) -> str:
@@ -541,7 +541,7 @@ class Catalogs:
         self,
         catalog_id: str,
         *,
-        fast: bool = False,
+        fast: bool = True,
         wait: bool = False,
         interval: float = 5.0,
         timeout: float = 4 * 3600.0,
@@ -554,9 +554,9 @@ class Catalogs:
 
         The catalog keeps serving while the job runs and gets the keywords
         once it is ready. If the job fails, the catalog stays as it was.
-        `fast` asks the language model once per group of similar items
-        instead of once per item. `wait` and the arguments after it work as
-        for `embed`.
+        `fast` (the default) asks the language model once per group of
+        similar items, `fast=False` once per item. `wait` and the arguments
+        after it work as for `embed`.
         """
         response = self._client.post(keywords_path(catalog_id), **keywords_body(fast))
         job = AddKeywordsJobDetails(**handle_response(response))
@@ -732,7 +732,7 @@ class AsyncCatalogs:
         self,
         catalog_id: str,
         *,
-        fast: bool = False,
+        fast: bool = True,
         wait: bool = False,
         interval: float = 5.0,
         timeout: float = 4 * 3600.0,

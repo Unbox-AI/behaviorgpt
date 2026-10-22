@@ -66,7 +66,8 @@ def test_add_keywords_starts_a_job_for_the_catalog():
     (post,) = calls
     assert post.method == "POST"
     assert post.url.path == f"/v1/catalogs/{CATALOG}/keywords"
-    assert post.content == b""
+    assert post.headers["content-type"] == "application/json"
+    assert json.loads(post.content) == {"mode": "fast"}
 
 
 def test_add_keywords_waits_through_the_keywords_and_the_ingest():
@@ -117,26 +118,27 @@ def test_add_keywords_async():
     assert len(calls) == 3
 
 
-def test_fast_asks_for_the_fast_mode():
+def test_not_fast_asks_for_the_product_mode():
     client, calls = sync_client()
-    client.add_keywords(CATALOG, fast=True)
+    client.add_keywords(CATALOG, fast=False)
 
     (post,) = calls
-    assert post.headers["content-type"] == "application/json"
-    assert json.loads(post.content) == {"mode": "fast"}
+    assert json.loads(post.content) == {"mode": "product"}
 
 
-def test_fast_async():
+def test_fast_by_default_async():
     async def run():
         calls: list[httpx.Request] = []
         client = AsyncUnboxAIClient("us", api_key="ubx_test", base_url=BASE)
         client._http_client._transport = httpx.MockTransport(handler(calls, [READY]))
         async with client:
-            await client.add_keywords(CATALOG, fast=True)
+            await client.add_keywords(CATALOG)
+            await client.add_keywords(CATALOG, fast=False)
         return calls
 
-    (post,) = asyncio.run(run())
-    assert json.loads(post.content) == {"mode": "fast"}
+    fast, product = asyncio.run(run())
+    assert json.loads(fast.content) == {"mode": "fast"}
+    assert json.loads(product.content) == {"mode": "product"}
 
 
 # The progress bar
