@@ -102,7 +102,7 @@ client.add_items("new_items.parquet", catalog_id=job.catalog_id, wait=True)
 client.list_catalogs()
 client.delete_catalog("cat_...")
 
-client.add_keywords(job.catalog_id, wait=True)  # 1 to 2 hours per 20,000 items
+client.add_keywords(job.catalog_id, wait=True)  # 12 minutes for 19,000 items
 for section in client.sections([Search("coat")], catalog_id=job.catalog_id).sections:
     print(section.title, [item.data["name"] for item in section.items])
 ```
