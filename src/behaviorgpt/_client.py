@@ -348,10 +348,11 @@ class UnboxAIClient(_BaseClient):
         time by default.
 
         `keywords=True` also generates the search keywords and browse
-        categories `sections` groups items by. Allow a longer `timeout`: it
-        adds time before the catalog is ready, 1 to 2 hours per 20,000
-        items. If it fails the catalog still goes live, without them. Off by
-        default; `add_keywords` generates them for the catalog later.
+        categories `sections` groups items by, as `add_keywords` does by
+        default. Allow a longer `timeout`: it adds time before the catalog is
+        ready, 12 minutes for a 19,000-item catalog. If it fails the catalog
+        still goes live, without them. Off by default; `add_keywords`
+        generates them for the catalog later.
         """
         return self.catalogs.embed(
             Path(path),
@@ -403,7 +404,7 @@ class UnboxAIClient(_BaseClient):
         self,
         catalog_id: str,
         *,
-        fast: bool = False,
+        fast: bool = True,
         wait: bool = False,
         interval: float = 5.0,
         timeout: float = 4 * 3600.0,
@@ -414,17 +415,16 @@ class UnboxAIClient(_BaseClient):
         groups items by, for a catalog embedded without them.
 
         Nothing is re-embedded, and the catalog keeps serving while the job
-        runs; it takes 1 to 2 hours per 20,000 items, depending on the
-        catalog, so the default `timeout` of 4 hours covers at least 35,000.
-        Once the job is ready
+        runs; a 19,000-item catalog took 12 minutes. Once the job is ready
         the catalog serves with keywords. If it fails, the catalog stays as it
         was. Uploading the catalog again with `embed` replaces the keywords;
         pass `keywords=True` there to keep them.
 
-        `fast=True` asks the language model once per group of about 16
-        similar items instead of once per item: 6 to 10 times faster, with
-        fewer keywords per item (about 3 instead of 9), so sections have less
-        to group by.
+        By default the language model is asked once per group of about 16
+        similar items. `fast=False` asks it once per item instead: each item
+        gets more keywords (about 9 instead of 3), so sections have more to
+        group by, but it is 6 to 10 times slower, 1 to 2 hours per 20,000
+        items; the default `timeout` of 4 hours covers at least 35,000.
 
         `wait` and the arguments after it work as for `embed`.
         """
@@ -659,7 +659,7 @@ class AsyncUnboxAIClient(_BaseClient):
         self,
         catalog_id: str,
         *,
-        fast: bool = False,
+        fast: bool = True,
         wait: bool = False,
         interval: float = 5.0,
         timeout: float = 4 * 3600.0,

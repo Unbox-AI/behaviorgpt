@@ -96,7 +96,7 @@ The file name (without `.parquet`) is the catalog's name. Uploading the same nam
 
 If the user only wants to add a few items to a catalog they already embedded, or change some of its items, build a parquet of just those items and upload it with `client.add_items(path, catalog_id=..., wait=True)` instead: only those items are embedded, an `id` already in the catalog is replaced, and the catalog keeps serving. A later full `embed` of the catalog replaces everything, so their main catalog file should get the same rows.
 
-If the user wants `client.sections`, the catalog needs keywords, which `embed` does not generate by default. Once the catalog is ready, run `client.add_keywords(job.catalog_id, wait=True)`. It re-embeds nothing, but it takes about 2 hours per 20,000 items, so run it in the background if the tool allows. Its default `timeout` of 4 hours covers about 35,000 items; pass a longer one for a larger catalog.
+If the user wants `client.sections`, the catalog needs keywords, which `embed` does not generate by default. Once the catalog is ready, run `client.add_keywords(job.catalog_id, wait=True)`. It re-embeds nothing; a 19,000-item catalog took 12 minutes. `fast=False` gives each item more keywords but takes 1 to 2 hours per 20,000 items, so run that in the background if the tool allows; its default `timeout` of 4 hours covers at least 35,000 items.
 
 Load `.env` first (`from dotenv import load_dotenv; load_dotenv()`) if the key is not already in the environment. Embedding takes several minutes; run it in the background if the tool allows.
 
