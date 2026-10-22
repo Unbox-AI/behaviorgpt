@@ -349,7 +349,7 @@ class UnboxAIClient(_BaseClient):
 
         `keywords=True` also generates the search keywords and browse
         categories `sections` groups items by. Allow a longer `timeout`: it
-        adds time before the catalog is ready, about 2 hours per 20,000
+        adds time before the catalog is ready, 1 to 2 hours per 20,000
         items. If it fails the catalog still goes live, without them. Off by
         default; `add_keywords` generates them for the catalog later.
         """
@@ -414,14 +414,15 @@ class UnboxAIClient(_BaseClient):
         groups items by, for a catalog embedded without them.
 
         Nothing is re-embedded, and the catalog keeps serving while the job
-        runs; it takes about 2 hours per 20,000 items, so the default
-        `timeout` of 4 hours covers about 35,000. Once the job is ready
+        runs; it takes 1 to 2 hours per 20,000 items, depending on the
+        catalog, so the default `timeout` of 4 hours covers at least 35,000.
+        Once the job is ready
         the catalog serves with keywords. If it fails, the catalog stays as it
         was. Uploading the catalog again with `embed` replaces the keywords;
         pass `keywords=True` there to keep them.
 
         `fast=True` asks the language model once per group of about 16
-        similar items instead of once per item: about 9 times faster, with
+        similar items instead of once per item: 6 to 10 times faster, with
         fewer keywords per item (about 3 instead of 9), so sections have less
         to group by.
 
