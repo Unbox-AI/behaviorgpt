@@ -5,7 +5,7 @@ How catalogs are named and limited, how to update, list and delete them, and how
 ## Names and limits
 
 - A catalog can hold at most 100,000 items. Items added later with `add_items` count too.
-- Each API key can hold 2 catalogs. To raise the limit, contact alexander@unboxai.com.
+- Each API key can hold 2 catalogs. To raise the limit, email admin@unboxai.com.
 - The file name is the catalog's name. Uploading a file with the same name again refreshes that catalog and keeps its `catalog_id`; a new name takes one of the 2 slots. A failed upload does not use up a slot. Once both slots are in use, an upload under a new name is refused until you delete one of them.
 - One `add_items` or `add_keywords` job runs per catalog at a time, and the catalog cannot be refreshed or deleted while it runs.
 

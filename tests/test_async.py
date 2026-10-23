@@ -146,6 +146,19 @@ def test_umap_returns_the_page_and_raises_on_error():
     assert exc.value.status_code == 404
 
 
+def test_umap_wait_asks_again_until_the_map_is_built(monkeypatch):
+    async def no_sleep(_):
+        pass
+
+    monkeypatch.setattr("behaviorgpt._client.asyncio.sleep", no_sleep)
+    answers = iter([httpx.Response(404, json={"detail": "No UMAP"})] * 2)
+    client = AsyncUnboxAIClient("US", api_key="test", base_url=BASE)
+    client._http_client._transport = httpx.MockTransport(
+        lambda _: next(answers, httpx.Response(200, text="<html>map</html>"))
+    )
+    assert asyncio.run(client.umap(catalog_id="cat", wait=60)) == "<html>map</html>"
+
+
 def test_calls_run_concurrently_on_one_client():
     client, requests = mock_client()
 

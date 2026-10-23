@@ -62,7 +62,7 @@ Listed in order of impact.
 
 ## Catalog size and the UMAP
 
-`client.umap()` returns a 2D map of the catalog's items. The map is built only for catalogs of up to 100,000 items, within about a minute after the catalog reads `ready`. Laying out more items than that does not fit in the embedding worker's memory, so larger catalogs, such as the shared `retail_catalog`, never get one. Embedding and every query work the same at any size; only the map is skipped. For a catalog without a map, `umap()` raises `UnboxAIError` with status 404. Items added with `client.add_items()` are not drawn on the map until the next full upload of the catalog.
+`client.umap()` returns a 2D map of the catalog's items. The map is built only for catalogs of up to 100,000 items, within about a minute after the catalog reads `ready`. Laying out more items than that does not fit in the embedding worker's memory, so larger catalogs, such as the shared `retail_catalog`, never get one. Embedding and every query work the same at any size; only the map is skipped. For a catalog without a map, `umap()` raises `UnboxAIError` with status 404. Right after an embed, pass `wait=` (seconds) to keep asking until the map is built, for example `client.umap(catalog_id=job.catalog_id, wait=180)`. Items added with `client.add_items()` are not drawn on the map until the next full upload of the catalog.
 
 ## Hosting your catalog
 
