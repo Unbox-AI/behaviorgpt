@@ -1,5 +1,7 @@
+import asyncio
 import os
 import random
+import time
 import warnings
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
@@ -9,7 +11,7 @@ from uuid import uuid4
 
 import httpx
 
-from behaviorgpt._exceptions import AuthenticationError
+from behaviorgpt._exceptions import AuthenticationError, UnboxAIError
 from behaviorgpt.resources.catalogs import AsyncCatalogs, Catalogs
 from behaviorgpt.resources.recommendations import AsyncRecommender, Recommender
 from behaviorgpt.resources.requests import UnboxAIRequester
@@ -42,6 +44,7 @@ from behaviorgpt.types.http import RecommendationType
 DEFAULT_HTTP_TIMEOUT = httpx.Timeout(120.0, connect=10.0, write=300.0)
 DEFAULT_BASE_URL = "https://behaviorgpt-northeurope.api.unboxai.com/v1"
 DEFAULT_TRAILING_SEARCHES = 3
+UMAP_POLL = 5.0
 
 Predict = Literal["view", "purchase"]
 
@@ -499,7 +502,7 @@ class UnboxAIClient(_BaseClient):
         )
         return self.random_item(*args, **kwargs)
 
-    def umap(self, *, catalog_id: Optional[str] = None):
+    def umap(self, *, catalog_id: Optional[str] = None, wait: float = 0.0) -> str:
         """The catalog's UMAP, a 2D map of its items, as an HTML page.
 
         Maps exist only for catalogs of up to 100,000 items, and appear within
@@ -507,9 +510,20 @@ class UnboxAIClient(_BaseClient):
         that does not fit in the embedding worker's memory, so larger catalogs
         (such as the shared `retail_catalog`) never get one. A missing map
         raises `UnboxAIError` with status 404 and says which case applies.
+
+        `wait` is how many seconds to keep asking while the map is missing,
+        for a catalog that just became ready. A catalog that never gets a map
+        raises only once that time is up.
         """
         active_catalog: str = catalog_id or self.default_catalog_id
-        return self.catalogs.get_umap(catalog_id=active_catalog)
+        deadline = time.monotonic() + wait
+        while True:
+            try:
+                return self.catalogs.get_umap(catalog_id=active_catalog)
+            except UnboxAIError as err:
+                if err.status_code != 404 or time.monotonic() + UMAP_POLL > deadline:
+                    raise
+            time.sleep(UMAP_POLL)
 
 
 class AsyncUnboxAIClient(_BaseClient):
@@ -713,10 +727,17 @@ class AsyncUnboxAIClient(_BaseClient):
         top = await self.complete(history=[], catalog_id=catalog_id, limit=window)
         return _pick_random(top, catalog_id or self.default_catalog_id)
 
-    async def umap(self, *, catalog_id: Optional[str] = None) -> str:
+    async def umap(self, *, catalog_id: Optional[str] = None, wait: float = 0.0) -> str:
         """The catalog's UMAP as an HTML page; see `UnboxAIClient.umap`."""
         active_catalog: str = catalog_id or self.default_catalog_id
-        return await self.catalogs.get_umap(catalog_id=active_catalog)
+        deadline = time.monotonic() + wait
+        while True:
+            try:
+                return await self.catalogs.get_umap(catalog_id=active_catalog)
+            except UnboxAIError as err:
+                if err.status_code != 404 or time.monotonic() + UMAP_POLL > deadline:
+                    raise
+            await asyncio.sleep(UMAP_POLL)
 
 
 def _pick_random(top: UnboxAIResponse, catalog_id: str) -> Item:
