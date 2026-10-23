@@ -27,6 +27,7 @@ from behaviorgpt.types.http import (
     Section,
     SectionsResponse,
     SimilarItemsRequest,
+    TrackedEvent,
     UnboxAIRequest,
     UnboxAIResponse,
 )
@@ -56,6 +57,7 @@ __all__ = [
     "CartItem",
     "Section",
     "SectionsResponse",
+    "TrackedEvent",
 ]
 
 

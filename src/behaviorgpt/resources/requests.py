@@ -28,10 +28,12 @@ class UnboxAIRequester:
         num_candidates: Optional[int] = None,
         max_trailing_searches: Optional[int] = None,
         recommendation_type: Optional[RecommendationType] = None,
+        user_id: Optional[str] = None,
     ) -> UnboxAIRequest:
         return UnboxAIRequest(
             query=query,
             history=history or [],
+            user_id=user_id,
             store_id=catalog_id,
             domains=domains or self.domains,
             timezone=self.timezone,
