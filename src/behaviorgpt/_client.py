@@ -13,6 +13,7 @@ import httpx
 
 from behaviorgpt._exceptions import AuthenticationError, UnboxAIError
 from behaviorgpt.resources.catalogs import AsyncCatalogs, Catalogs
+from behaviorgpt.resources.events import AsyncEvents, Events
 from behaviorgpt.resources.recommendations import AsyncRecommender, Recommender
 from behaviorgpt.resources.requests import UnboxAIRequester
 from behaviorgpt.resources.search import AsyncSearcher, Searcher
@@ -85,13 +86,18 @@ class _BaseClient:
         offset: int,
         catalog_id: Optional[str],
         filters: Optional[dict[str, Any]],
-        register_event: bool,
+        register_event: Optional[bool],
         max_trailing_searches: int = DEFAULT_TRAILING_SEARCHES,
         predict: Predict = "view",
+        user_id: Optional[str] = None,
     ) -> tuple[bool, UnboxAIRequest, dict]:
         """The request `complete` sends, whether it goes to search, and its headers."""
         if predict not in ("view", "purchase"):
             raise ValueError(f"predict must be 'view' or 'purchase', not {predict!r}")
+        if user_id is not None:
+            _check_history_for_user(history)
+        if register_event is None:
+            register_event = user_id is not None
         active_catalog, request_headers = self._catalog_headers(catalog_id)
 
         history_events = self.__from_sequence(active_catalog, history)
@@ -112,6 +118,7 @@ class _BaseClient:
                 filters=filters,
                 register_event=register_event,
                 max_trailing_searches=max_trailing_searches,
+                user_id=user_id,
             )
             return True, req, request_headers
 
@@ -125,6 +132,7 @@ class _BaseClient:
             recommendation_type=(
                 RecommendationType(name="buy_next") if predict == "purchase" else None
             ),
+            user_id=user_id,
         )
         return False, req, request_headers
 
@@ -133,14 +141,15 @@ class _BaseClient:
         history: UserHistoryInput,
         catalog_id: Optional[str],
         filters: Optional[dict[str, Any]],
-        register_event: bool,
+        register_event: Optional[bool],
         max_sections: int,
         max_items_per_section: int,
         min_items_per_section: int,
+        user_id: Optional[str] = None,
     ) -> tuple[dict, dict]:
         """The body `sections` sends, and its headers."""
         _, req, headers = self._complete_request(
-            history, 10, 0, catalog_id, filters, register_event
+            history, 10, 0, catalog_id, filters, register_event, user_id=user_id
         )
         body = sections_body(
             req, max_sections, max_items_per_section, min_items_per_section
@@ -255,19 +264,21 @@ class UnboxAIClient(_BaseClient):
         self.recommendations = Recommender(self._http_client)
         self.search = Searcher(self._http_client)
         self.catalogs = Catalogs(self._http_client)
+        self.events = Events(self._http_client, self)
         self._sections = Sectioner(self._http_client)
 
     def complete(
         self,
-        history: UserHistoryInput,
+        history: UserHistoryInput = (),
         limit: int = 10,
         offset: int = 0,
         *,
         catalog_id: Optional[str] = None,
         filters: Optional[dict[str, Any]] = None,
-        register_event: bool = False,
+        register_event: Optional[bool] = None,
         max_trailing_searches: int = DEFAULT_TRAILING_SEARCHES,
         predict: Predict = "view",
+        user_id: Optional[str] = None,
     ) -> UnboxAIResponse:
         """Rank the items most likely to come after `history`.
 
@@ -280,6 +291,12 @@ class UnboxAIClient(_BaseClient):
         When the history ends in searches, up to `max_trailing_searches` of
         them in a row, the query included, reach the model, so `nike` then
         `shoes` reads as one intent.
+
+        With `user_id`, the history is that user's events recorded with
+        `client.events.track`: pass no history for recommendations, or
+        `[Search(query)]` to search. The search is then recorded as their
+        event too, so the next call sees it; `register_event=False` leaves it
+        out. Without `user_id` nothing is recorded unless `register_event=True`.
         """
         is_search, req, headers = self._complete_request(
             history,
@@ -290,20 +307,22 @@ class UnboxAIClient(_BaseClient):
             register_event,
             max_trailing_searches,
             predict,
+            user_id,
         )
         endpoint = self.search if is_search else self.recommendations
         return endpoint.create(payload=req, headers=headers)
 
     def sections(
         self,
-        history: UserHistoryInput,
+        history: UserHistoryInput = (),
         *,
         catalog_id: Optional[str] = None,
         max_sections: int = 10,
         max_items_per_section: int = 25,
         min_items_per_section: int = 5,
         filters: Optional[dict[str, Any]] = None,
-        register_event: bool = False,
+        register_event: Optional[bool] = None,
+        user_id: Optional[str] = None,
     ) -> SectionsResponse:
         """The items most likely to come after `history`, grouped into titled
         sections such as "black coats", best section first.
@@ -317,6 +336,9 @@ class UnboxAIClient(_BaseClient):
         `max_sections` can be at most 15 and `max_items_per_section` at most
         100. Each item's `data` holds its generated search terms in
         `top_terms`, best first.
+
+        `user_id` reads the history from that user's tracked events, as in
+        `complete`.
         """
         body, headers = self._sections_request(
             history,
@@ -326,6 +348,7 @@ class UnboxAIClient(_BaseClient):
             max_sections,
             max_items_per_section,
             min_items_per_section,
+            user_id,
         )
         return self._sections.create(body, headers=headers)
 
@@ -559,6 +582,7 @@ class AsyncUnboxAIClient(_BaseClient):
         self.recommendations = AsyncRecommender(self._http_client)
         self.search = AsyncSearcher(self._http_client)
         self.catalogs = AsyncCatalogs(self._http_client)
+        self.events = AsyncEvents(self._http_client, self)
         self._sections = AsyncSectioner(self._http_client)
 
     async def __aenter__(self) -> "AsyncUnboxAIClient":
@@ -572,15 +596,16 @@ class AsyncUnboxAIClient(_BaseClient):
 
     async def complete(
         self,
-        history: UserHistoryInput,
+        history: UserHistoryInput = (),
         limit: int = 10,
         offset: int = 0,
         *,
         catalog_id: Optional[str] = None,
         filters: Optional[dict[str, Any]] = None,
-        register_event: bool = False,
+        register_event: Optional[bool] = None,
         max_trailing_searches: int = DEFAULT_TRAILING_SEARCHES,
         predict: Predict = "view",
+        user_id: Optional[str] = None,
     ) -> UnboxAIResponse:
         """Rank the items most likely to come after `history`; see
         `UnboxAIClient.complete`."""
@@ -593,20 +618,22 @@ class AsyncUnboxAIClient(_BaseClient):
             register_event,
             max_trailing_searches,
             predict,
+            user_id,
         )
         endpoint = self.search if is_search else self.recommendations
         return await endpoint.create(payload=req, headers=headers)
 
     async def sections(
         self,
-        history: UserHistoryInput,
+        history: UserHistoryInput = (),
         *,
         catalog_id: Optional[str] = None,
         max_sections: int = 10,
         max_items_per_section: int = 25,
         min_items_per_section: int = 5,
         filters: Optional[dict[str, Any]] = None,
-        register_event: bool = False,
+        register_event: Optional[bool] = None,
+        user_id: Optional[str] = None,
     ) -> SectionsResponse:
         """Items grouped into titled sections; see `UnboxAIClient.sections`."""
         body, headers = self._sections_request(
@@ -617,6 +644,7 @@ class AsyncUnboxAIClient(_BaseClient):
             max_sections,
             max_items_per_section,
             min_items_per_section,
+            user_id,
         )
         return await self._sections.create(body, headers=headers)
 
@@ -738,6 +766,22 @@ class AsyncUnboxAIClient(_BaseClient):
                 if err.status_code != 404 or time.monotonic() + UMAP_POLL > deadline:
                     raise
             await asyncio.sleep(UMAP_POLL)
+
+
+def _check_history_for_user(history: UserHistoryInput) -> None:
+    """With a `user_id` the server reads the history from the user's tracked
+    events, so a history passed along can only hold the current search."""
+    events: list[UserEvent] = (
+        [ev for session in history for ev in session]
+        if history and isinstance(history[0], (list, tuple))
+        else list(cast(Sequence[UserEvent], history))
+    )
+    if len(events) > 1 or (events and not isinstance(events[0], Search)):
+        raise ValueError(
+            "with user_id the history is the user's tracked events: pass no "
+            "history, or only the current Search, and record the rest with "
+            "client.events.track"
+        )
 
 
 def _pick_random(top: UnboxAIResponse, catalog_id: str) -> Item:

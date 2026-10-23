@@ -48,7 +48,10 @@ class RecommendationType(BaseModel):
 class UnboxAIRequest(BaseModel):
     query: Optional[str] = Field(default=None)
 
-    history: List[SessionEvent] = Field(default_factory=list)
+    # With `user_id`, the server reads that user's tracked events as the
+    # history, and `history` is left out: it accepts one or the other.
+    history: Optional[List[SessionEvent]] = Field(default_factory=list)
+    user_id: Optional[str] = None
     store_id: str
     domains: Domains
     timezone: str = "UTC"
@@ -80,6 +83,26 @@ class UnboxAIRequest(BaseModel):
         if self.offset + self.limit > 10000:
             raise ValueError("Offset + limit cannot exceed 10,000")
         return self
+
+    @model_validator(mode="after")
+    def user_id_or_history(self) -> "UnboxAIRequest":
+        if self.user_id is not None:
+            if self.history:
+                raise ValueError(
+                    "pass a user_id or a history, not both: with a user_id the "
+                    "history is that user's tracked events"
+                )
+            self.history = None
+        return self
+
+
+class TrackedEvent(BaseModel):
+    """An event as the API stored it."""
+
+    user_id: str
+    timestamp: datetime
+    event: dict
+    store_id: Optional[str] = None
 
 
 class UnboxAIResponse(BaseModel):

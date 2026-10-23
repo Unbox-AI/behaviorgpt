@@ -79,6 +79,21 @@ client.complete([View(shoe)], predict="purchase")  # bought together
 client.complete([View(shoe), Order([shoe])])       # what they want after buying it
 ```
 
+### Tracked users
+
+Instead of sending the history with every call, you can record each event as it happens and pass the user's id. BehaviorGPT then reads that user's history from what you recorded.
+
+```python
+client.events.track("user-42", View(shoe))
+client.events.track("user-42", Order([shoe]), timestamp=bought_at)
+
+client.complete(user_id="user-42")                     # recommendations
+client.complete([Search("socks")], user_id="user-42")  # a search, personalized
+client.sections(user_id="user-42")
+```
+
+`user_id` takes the place of the history: the only event you pass with it is the current search, which is then recorded as the user's too (`register_event=False` leaves it out). `timestamp` defaults to now; pass it when you send events later than they happen. Your events are visible only to your account: `client.events.list(user_id="user-42")` returns that user's latest, newest first.
+
 ## Your own catalog
 
 The model can only return items it knows about. Out of the box the client uses `retail_catalog`, a sample retail catalog. To use the model on your own data, upload your catalog as a parquet file. A catalog doesn't have to be products for sale: artworks, articles, listings or anything else people browse and pick from work the same way.
