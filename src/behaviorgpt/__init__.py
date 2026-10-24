@@ -12,6 +12,7 @@ from behaviorgpt.resources.catalogs import (
 )
 from behaviorgpt.types.events import (
     AddToCart,
+    CartItem,
     Order,
     RemoveFromCart,
     Search,
@@ -24,6 +25,7 @@ __all__ = [
     "View",
     "RemoveFromCart",
     "Order",
+    "CartItem",
     "UnboxAIClient",
     "AsyncUnboxAIClient",
     "ProgressBar",
