@@ -107,7 +107,15 @@ for section in client.sections([Search("coat")], catalog_id=job.catalog_id).sect
     print(section.title, [item.data["name"] for item in section.items])
 ```
 
-[`docs/catalogs.md`](https://github.com/Unbox-AI/behaviorgpt/blob/main/docs/catalogs.md) has the details: catalog slots, what replacing an item keeps, how long keywords take and what happens when a job fails.
+To rank several catalogs together, say your own next to `retail_catalog`, pass `catalog_ids` instead of `catalog_id`. One ranking comes back, and each item says which catalog it is in:
+
+```python
+res = client.complete([View(shoe)], catalog_ids=[job.catalog_id, "retail_catalog"])
+for item in res.items:
+    print(item.catalog_id, item.data["name"])
+```
+
+[`docs/catalogs.md`](https://github.com/Unbox-AI/behaviorgpt/blob/main/docs/catalogs.md) has the details: catalog slots, what replacing an item keeps, how long keywords take, what happens when a job fails, and how a history names items of several catalogs.
 
 If mapping your data to the format is hard, open a coding agent in this directory and ask it to embed your catalog. The repo ships a skill at [`.claude/skills/embed-catalog/SKILL.md`](https://github.com/Unbox-AI/behaviorgpt/blob/main/.claude/skills/embed-catalog/SKILL.md) that walks the agent through mapping your columns, building and validating the parquet, checking image URLs, and uploading. Claude Code picks it up automatically; for other agents, point them at that file.
 
