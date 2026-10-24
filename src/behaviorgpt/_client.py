@@ -4,9 +4,10 @@ import random
 import time
 import warnings
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Callable, Literal, Optional, Sequence, cast
+from typing import Any, Callable, Iterable, Literal, Optional, Sequence, cast
 from uuid import uuid4
 
 import httpx
@@ -36,7 +37,9 @@ from behaviorgpt.types import (
     UnboxAIResponse,
     UserEvent,
     UserHistoryInput,
+    View,
 )
+from behaviorgpt.types.events import ItemRef
 from behaviorgpt.types.http import RecommendationType
 
 # An embed upload streams the whole parquet, and the API answers only once the
@@ -47,6 +50,45 @@ DEFAULT_TRAILING_SEARCHES = 3
 UMAP_POLL = 5.0
 
 Predict = Literal["view", "purchase"]
+CATALOG_IDS_HEADER = "x-catalog-ids"
+
+
+@dataclass(frozen=True)
+class _Target:
+    """The catalogs one request reads. Several (`catalog_ids=`) are ranked
+    together, and then every item names the catalog it is in."""
+
+    catalog_ids: tuple[str, ...]
+    multi: bool = False
+
+    @property
+    def primary(self) -> str:
+        return self.catalog_ids[0]
+
+    @property
+    def headers(self) -> dict:
+        if self.multi:
+            return {CATALOG_IDS_HEADER: ",".join(self.catalog_ids)}
+        return {"x-catalog-id": self.primary}
+
+    def of(self, catalog_id: Optional[str]) -> str:
+        """The catalog of an item that names `catalog_id`, or none."""
+        if catalog_id is None or catalog_id == self.primary:
+            return self.primary
+        if catalog_id not in self.catalog_ids:
+            hint = "" if self.multi else "; pass catalog_ids= to rank several"
+            raise ValueError(
+                f"an item is in catalog {catalog_id!r}, but this request reads "
+                f"{', '.join(map(repr, self.catalog_ids))}{hint}"
+            )
+        return catalog_id
+
+    def label(self, items: Iterable[Item]) -> None:
+        """Give each item of a response its catalog: the API names it only when
+        the request reads several."""
+        for item in items:
+            if item.catalog_id is None:
+                item.catalog_id = self.primary
 
 
 class _BaseClient:
@@ -59,7 +101,7 @@ class _BaseClient:
         timezone: str = "UTC",
         api_key: Optional[str] = None,
         base_url: str = DEFAULT_BASE_URL,
-        default_catalog_id: str = "retail_catalog",
+        default_catalog_id: Optional[str] = None,
     ):
         self.api_key = api_key or os.environ.get("UNBOXAI_API_KEY")
         if not self.api_key:
@@ -67,16 +109,50 @@ class _BaseClient:
             raise AuthenticationError(msg)
 
         self.base_url = base_url
-        self.default_catalog_id = default_catalog_id
+        # the catalog of calls that name none
+        self.default_catalog_id = (
+            default_catalog_id
+            or os.environ.get("UNBOXAI_CATALOG_ID")
+            or "retail_catalog"
+        )
 
         self.domains = Domains(market=market)
         self.timezone = timezone
 
         self.requester = UnboxAIRequester(domains=self.domains, timezone=self.timezone)
 
-    def _catalog_headers(self, catalog_id: Optional[str]) -> tuple[str, dict]:
-        active_catalog: str = catalog_id or self.default_catalog_id
-        return active_catalog, {"x-catalog-id": active_catalog}
+    def _target(
+        self, catalog_id: Optional[str], catalog_ids: Optional[Sequence[str]]
+    ) -> _Target:
+        if catalog_ids is None:
+            return _Target((catalog_id or self.default_catalog_id,))
+        if catalog_id is not None:
+            raise ValueError("pass catalog_id or catalog_ids, not both")
+        if isinstance(catalog_ids, str):
+            raise TypeError("catalog_ids takes a list of catalog ids, not a string")
+        ids = tuple(dict.fromkeys(catalog_ids))
+        if not ids:
+            raise ValueError("catalog_ids names no catalog")
+        return _Target(ids, multi=True)
+
+    def _similar_request(
+        self,
+        item: ItemRef,
+        catalog_id: Optional[str],
+        catalog_ids: Optional[Sequence[str]],
+    ) -> tuple[_Target, str, str]:
+        """The catalogs a similar-items request reads, and the id and catalog
+        of its item. The item's catalog is `catalog_id`, else the `Item`'s own;
+        over `catalog_ids` it must be one of them, by default the first."""
+        item_id = item if isinstance(item, str) else item.id
+        item_catalog = catalog_id or (
+            None if isinstance(item, str) else item.catalog_id
+        )
+        if catalog_ids is None:
+            target = self._target(item_catalog, None)
+            return target, item_id, target.primary
+        target = self._target(None, catalog_ids)
+        return target, item_id, target.of(item_catalog)
 
     def _complete_request(
         self,
@@ -88,13 +164,15 @@ class _BaseClient:
         register_event: bool,
         max_trailing_searches: int = DEFAULT_TRAILING_SEARCHES,
         predict: Predict = "view",
-    ) -> tuple[bool, UnboxAIRequest, dict]:
-        """The request `complete` sends, whether it goes to search, and its headers."""
+        catalog_ids: Optional[Sequence[str]] = None,
+    ) -> tuple[bool, UnboxAIRequest, _Target]:
+        """The request `complete` sends, whether it goes to search, and the
+        catalogs it reads."""
         if predict not in ("view", "purchase"):
             raise ValueError(f"predict must be 'view' or 'purchase', not {predict!r}")
-        active_catalog, request_headers = self._catalog_headers(catalog_id)
+        target = self._target(catalog_id, catalog_ids)
 
-        history_events = self.__from_sequence(active_catalog, history)
+        history_events = self.__from_sequence(target, history)
         last_event = self._get_last_event(history)
 
         if isinstance(last_event, Search):
@@ -106,18 +184,18 @@ class _BaseClient:
             req = self.requester.make(
                 query=last_event.query,
                 history=history_events[:-1],
-                catalog_id=active_catalog,
+                catalog_id=target.primary,
                 limit=limit,
                 offset=offset,
                 filters=filters,
                 register_event=register_event,
                 max_trailing_searches=max_trailing_searches,
             )
-            return True, req, request_headers
+            return True, req, target
 
         req = self.requester.make(
             history=history_events,
-            catalog_id=active_catalog,
+            catalog_id=target.primary,
             limit=limit,
             offset=offset,
             filters=filters,
@@ -126,7 +204,7 @@ class _BaseClient:
                 RecommendationType(name="buy_next") if predict == "purchase" else None
             ),
         )
-        return False, req, request_headers
+        return False, req, target
 
     def _sections_request(
         self,
@@ -137,18 +215,19 @@ class _BaseClient:
         max_sections: int,
         max_items_per_section: int,
         min_items_per_section: int,
-    ) -> tuple[dict, dict]:
-        """The body `sections` sends, and its headers."""
-        _, req, headers = self._complete_request(
-            history, 10, 0, catalog_id, filters, register_event
+        catalog_ids: Optional[Sequence[str]] = None,
+    ) -> tuple[dict, _Target]:
+        """The body `sections` sends, and the catalogs it reads."""
+        _, req, target = self._complete_request(
+            history, 10, 0, catalog_id, filters, register_event, catalog_ids=catalog_ids
         )
         body = sections_body(
             req, max_sections, max_items_per_section, min_items_per_section
         )
-        return body, headers
+        return body, target
 
     def __from_sequence(
-        self, catalog_id: str, context: UserHistoryInput
+        self, target: _Target, context: UserHistoryInput
     ) -> list[SessionEvent]:
         events: list[SessionEvent] = []
 
@@ -159,7 +238,7 @@ class _BaseClient:
         def _process_session_events(
             session_events: Sequence[UserEvent], session_id: str, session_offset: int
         ):
-            cart_state: dict[str, int] = defaultdict(int)
+            cart_state: dict[tuple[Optional[str], str], int] = defaultdict(int)
             current_cart_id = str(uuid4())
 
             # Base time for the start of the sequence
@@ -167,17 +246,19 @@ class _BaseClient:
 
             for i, ev in enumerate(session_events):
                 if isinstance(ev, AddToCart):
-                    cart_state[ev.item] += 1
+                    cart_state[(ev.catalog_id, ev.item)] += 1
                 elif isinstance(ev, RemoveFromCart):
-                    if cart_state[ev.item] > 1:
-                        cart_state[ev.item] -= 1
+                    key = (ev.catalog_id, ev.item)
+                    if cart_state[key] > 1:
+                        cart_state[key] -= 1
                     else:
-                        cart_state.pop(ev.item)
+                        cart_state.pop(key)
                 elif isinstance(ev, Order):
                     if not getattr(ev, "items", None):
                         ev.cart_id = current_cart_id
                         ev.items = [
-                            CartItem(item, qty) for item, qty in cart_state.items()
+                            CartItem(item, qty, catalog_id=catalog)
+                            for (catalog, item), qty in cart_state.items()
                         ]
                     cart_state.clear()
                     current_cart_id = str(uuid4())
@@ -189,9 +270,15 @@ class _BaseClient:
                     milliseconds=(session_offset * 1000) + i
                 )
 
-                events.append(
-                    self.__to_session_evt(ev, session_id, catalog_id, event_time)
-                )
+                for j, (catalog, event) in enumerate(_by_catalog(ev, target)):
+                    events.append(
+                        self.__to_session_evt(
+                            event,
+                            session_id,
+                            catalog,
+                            event_time + timedelta(microseconds=j),
+                        )
+                    )
 
         if isinstance(context[0], (list, tuple)):
             context_2d = cast(Sequence[Sequence[UserEvent]], context)
@@ -236,7 +323,7 @@ class UnboxAIClient(_BaseClient):
         timezone: str = "UTC",
         api_key: Optional[str] = None,
         base_url: str = DEFAULT_BASE_URL,
-        default_catalog_id: str = "retail_catalog",
+        default_catalog_id: Optional[str] = None,
         http_timeout: float | httpx.Timeout = DEFAULT_HTTP_TIMEOUT,
     ):
         super().__init__(
@@ -264,6 +351,7 @@ class UnboxAIClient(_BaseClient):
         offset: int = 0,
         *,
         catalog_id: Optional[str] = None,
+        catalog_ids: Optional[Sequence[str]] = None,
         filters: Optional[dict[str, Any]] = None,
         register_event: bool = False,
         max_trailing_searches: int = DEFAULT_TRAILING_SEARCHES,
@@ -280,8 +368,16 @@ class UnboxAIClient(_BaseClient):
         When the history ends in searches, up to `max_trailing_searches` of
         them in a row, the query included, reach the model, so `nike` then
         `shoes` reads as one intent.
+
+        `catalog_ids` ranks several catalogs together instead of one, for
+        instance your own and `retail_catalog`: each item of the result says
+        which it is in (`item.catalog_id`). Items in the history are in the
+        first catalog unless they name another, `View(item_id,
+        catalog_id=...)`, or are `Item`s of an earlier response, which know
+        theirs. In `filters`, `catalog_id` is the item's catalog, e.g.
+        `{"catalog_id": "retail_catalog"}`.
         """
-        is_search, req, headers = self._complete_request(
+        is_search, req, target = self._complete_request(
             history,
             limit,
             offset,
@@ -290,15 +386,19 @@ class UnboxAIClient(_BaseClient):
             register_event,
             max_trailing_searches,
             predict,
+            catalog_ids,
         )
         endpoint = self.search if is_search else self.recommendations
-        return endpoint.create(payload=req, headers=headers)
+        response = endpoint.create(payload=req, headers=target.headers)
+        target.label(response.items)
+        return response
 
     def sections(
         self,
         history: UserHistoryInput,
         *,
         catalog_id: Optional[str] = None,
+        catalog_ids: Optional[Sequence[str]] = None,
         max_sections: int = 10,
         max_items_per_section: int = 25,
         min_items_per_section: int = 5,
@@ -317,8 +417,12 @@ class UnboxAIClient(_BaseClient):
         `max_sections` can be at most 15 and `max_items_per_section` at most
         100. Each item's `data` holds its generated search terms in
         `top_terms`, best first.
+
+        `catalog_ids` groups several catalogs together, as for `complete`: a
+        section can hold items of any of them, each weighed by its catalog's
+        size, so a small catalog does not crowd out a large one.
         """
-        body, headers = self._sections_request(
+        body, target = self._sections_request(
             history,
             catalog_id,
             filters,
@@ -326,8 +430,11 @@ class UnboxAIClient(_BaseClient):
             max_sections,
             max_items_per_section,
             min_items_per_section,
+            catalog_ids,
         )
-        return self._sections.create(body, headers=headers)
+        response = self._sections.create(body, headers=target.headers)
+        target.label(item for section in response.sections for item in section.items)
+        return response
 
     def embed(
         self,
@@ -462,20 +569,34 @@ class UnboxAIClient(_BaseClient):
 
     def similar_items(
         self,
-        item_id: str,
+        item_id: ItemRef,
         limit: int = 10,
         offset: int = 0,
         *,
         catalog_id: Optional[str] = None,
+        catalog_ids: Optional[Sequence[str]] = None,
+        filters: Optional[dict[str, Any]] = None,
     ) -> UnboxAIResponse:
-        active_catalog, request_headers = self._catalog_headers(catalog_id)
-        return self.catalogs.get_similar_items(
-            item_id,
-            catalog_id=active_catalog,
+        """The items most like `item_id`, an item id or an `Item` of a
+        response, most similar first.
+
+        `catalog_id` is the catalog the item is in; for an `Item`, its own.
+        `catalog_ids` looks for similar items in several catalogs, the item's
+        among them (by default the first): each result says which it is in.
+        """
+        target, item, item_catalog = self._similar_request(
+            item_id, catalog_id, catalog_ids
+        )
+        response = self.catalogs.get_similar_items(
+            item,
+            catalog_id=item_catalog,
             limit=limit,
             offset=offset,
-            headers=request_headers,
+            filters=filters,
+            headers=target.headers,
         )
+        target.label(response.items)
+        return response
 
     def similar_products(
         self, product_id: str, *args: Any, **kwargs: Any
@@ -540,7 +661,7 @@ class AsyncUnboxAIClient(_BaseClient):
         timezone: str = "UTC",
         api_key: Optional[str] = None,
         base_url: str = DEFAULT_BASE_URL,
-        default_catalog_id: str = "retail_catalog",
+        default_catalog_id: Optional[str] = None,
         http_timeout: float | httpx.Timeout = DEFAULT_HTTP_TIMEOUT,
     ):
         super().__init__(
@@ -577,6 +698,7 @@ class AsyncUnboxAIClient(_BaseClient):
         offset: int = 0,
         *,
         catalog_id: Optional[str] = None,
+        catalog_ids: Optional[Sequence[str]] = None,
         filters: Optional[dict[str, Any]] = None,
         register_event: bool = False,
         max_trailing_searches: int = DEFAULT_TRAILING_SEARCHES,
@@ -584,7 +706,7 @@ class AsyncUnboxAIClient(_BaseClient):
     ) -> UnboxAIResponse:
         """Rank the items most likely to come after `history`; see
         `UnboxAIClient.complete`."""
-        is_search, req, headers = self._complete_request(
+        is_search, req, target = self._complete_request(
             history,
             limit,
             offset,
@@ -593,15 +715,19 @@ class AsyncUnboxAIClient(_BaseClient):
             register_event,
             max_trailing_searches,
             predict,
+            catalog_ids,
         )
         endpoint = self.search if is_search else self.recommendations
-        return await endpoint.create(payload=req, headers=headers)
+        response = await endpoint.create(payload=req, headers=target.headers)
+        target.label(response.items)
+        return response
 
     async def sections(
         self,
         history: UserHistoryInput,
         *,
         catalog_id: Optional[str] = None,
+        catalog_ids: Optional[Sequence[str]] = None,
         max_sections: int = 10,
         max_items_per_section: int = 25,
         min_items_per_section: int = 5,
@@ -609,7 +735,7 @@ class AsyncUnboxAIClient(_BaseClient):
         register_event: bool = False,
     ) -> SectionsResponse:
         """Items grouped into titled sections; see `UnboxAIClient.sections`."""
-        body, headers = self._sections_request(
+        body, target = self._sections_request(
             history,
             catalog_id,
             filters,
@@ -617,8 +743,11 @@ class AsyncUnboxAIClient(_BaseClient):
             max_sections,
             max_items_per_section,
             min_items_per_section,
+            catalog_ids,
         )
-        return await self._sections.create(body, headers=headers)
+        response = await self._sections.create(body, headers=target.headers)
+        target.label(item for section in response.sections for item in section.items)
+        return response
 
     async def embed(
         self,
@@ -705,20 +834,28 @@ class AsyncUnboxAIClient(_BaseClient):
 
     async def similar_items(
         self,
-        item_id: str,
+        item_id: ItemRef,
         limit: int = 10,
         offset: int = 0,
         *,
         catalog_id: Optional[str] = None,
+        catalog_ids: Optional[Sequence[str]] = None,
+        filters: Optional[dict[str, Any]] = None,
     ) -> UnboxAIResponse:
-        active_catalog, request_headers = self._catalog_headers(catalog_id)
-        return await self.catalogs.get_similar_items(
-            item_id,
-            catalog_id=active_catalog,
+        """The items most like `item_id`; see `UnboxAIClient.similar_items`."""
+        target, item, item_catalog = self._similar_request(
+            item_id, catalog_id, catalog_ids
+        )
+        response = await self.catalogs.get_similar_items(
+            item,
+            catalog_id=item_catalog,
             limit=limit,
             offset=offset,
-            headers=request_headers,
+            filters=filters,
+            headers=target.headers,
         )
+        target.label(response.items)
+        return response
 
     async def random_item(
         self, catalog_id: Optional[str] = None, window: int = 100
@@ -738,6 +875,25 @@ class AsyncUnboxAIClient(_BaseClient):
                 if err.status_code != 404 or time.monotonic() + UMAP_POLL > deadline:
                     raise
             await asyncio.sleep(UMAP_POLL)
+
+
+def _by_catalog(event: UserEvent, target: _Target) -> list[tuple[str, UserEvent]]:
+    """An event as the API reads it, each with the catalog its items are in.
+    An event names one catalog, so an order of items from several becomes one
+    order per catalog."""
+    if isinstance(event, Order) and event.items:
+        groups: dict[str, list[CartItem]] = {}
+        for item in event.items:
+            groups.setdefault(target.of(item.catalog_id), []).append(item)
+        if len(groups) == 1:
+            return [(next(iter(groups)), event)]
+        return [
+            (catalog, event.model_copy(update={"items": items}))
+            for catalog, items in groups.items()
+        ]
+    if isinstance(event, (View, AddToCart, RemoveFromCart)):
+        return [(target.of(event.catalog_id), event)]
+    return [(target.primary, event)]
 
 
 def _pick_random(top: UnboxAIResponse, catalog_id: str) -> Item:

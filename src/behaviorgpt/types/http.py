@@ -22,6 +22,11 @@ class Item(BaseModel):
     id: str
     data: dict
     score: float
+    # the catalog the item is in: an id is unique only within its catalog.
+    # "store_id" on the wire.
+    catalog_id: Optional[str] = Field(
+        default=None, validation_alias=AliasChoices("catalog_id", "store_id")
+    )
 
     def extract_price(self, market: str | None = None) -> Optional[float]:
         if "price" in self.data:
@@ -139,7 +144,12 @@ class UnboxAIResponse(BaseModel):
 
         items_data = []
         for item in self.items:
-            flat_item = {"id": item.id, "score": item.score, **item.data}
+            flat_item = {
+                "id": item.id,
+                "catalog_id": item.catalog_id,
+                "score": item.score,
+                **item.data,
+            }
             flat_item["price"] = item.extract_price(self.market)
             items_data.append(flat_item)
 
@@ -183,6 +193,7 @@ class SimilarItemsRequest(BaseModel):
         validation_alias=AliasChoices("item_id", "product_id"),
         serialization_alias="product_id",
     )
+    # the catalog of the item; the results can come from several
     store_id: str
     limit: int = Field(default=10, ge=1, le=100)
     offset: int = Field(default=0, ge=0)

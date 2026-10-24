@@ -1,10 +1,16 @@
 import warnings
 from datetime import UTC, datetime
-from typing import List, Literal, Optional, Sequence, Tuple, Union
+from typing import TYPE_CHECKING, List, Literal, Optional, Sequence, Tuple, Union
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from behaviorgpt.types.domains import Domains
+
+if TYPE_CHECKING:
+    from behaviorgpt.types.http import Item
+
+# an item id, or an `Item` of a response, which knows its catalog
+ItemRef = Union[str, "Item"]
 
 
 class _ItemEvent(BaseModel):
@@ -15,8 +21,12 @@ class _ItemEvent(BaseModel):
         validation_alias=AliasChoices("item", "product"),
         serialization_alias="product",
     )
+    # the catalog the item is in, for a request over several catalogs
+    # (`catalog_ids=`); unset, the request's first catalog. Not sent as part of
+    # the event: it becomes the event's store_id.
+    catalog_id: Optional[str] = Field(default=None, exclude=True)
 
-    def __init__(self, item: Optional[str] = None, **data):
+    def __init__(self, item: Optional[ItemRef] = None, **data):
         if "product" in data:
             warnings.warn(
                 "`product=` is deprecated, use `item=`",
@@ -25,6 +35,10 @@ class _ItemEvent(BaseModel):
             )
             product = data.pop("product")
             item = product if item is None else item
+        if item is not None and not isinstance(item, str):
+            if data.get("catalog_id") is None:
+                data["catalog_id"] = item.catalog_id
+            item = item.id
         if item is not None:
             data["item"] = item
         super().__init__(**data)
@@ -41,7 +55,7 @@ class CartItem(_ItemEvent):
     quantity: int
 
     def __init__(
-        self, item: Optional[str] = None, quantity: Optional[int] = None, **data
+        self, item: Optional[ItemRef] = None, quantity: Optional[int] = None, **data
     ):
         if quantity is not None:
             data["quantity"] = quantity
@@ -65,7 +79,7 @@ class View(_ItemEvent):
 class AddToCart(_ItemEvent):
     type: Literal["addToCart"] = "addToCart"
 
-    def __init__(self, item: Optional[str] = None, **data):
+    def __init__(self, item: Optional[ItemRef] = None, **data):
         warnings.warn(
             "`AddToCart` is deprecated and will be removed in 0.7: the model reads "
             "it the same as `View`. Send a `View`, and list what was bought in "
@@ -79,7 +93,7 @@ class AddToCart(_ItemEvent):
 class RemoveFromCart(_ItemEvent):
     type: Literal["removeFromCart"] = "removeFromCart"
 
-    def __init__(self, item: Optional[str] = None, **data):
+    def __init__(self, item: Optional[ItemRef] = None, **data):
         warnings.warn(
             "`RemoveFromCart` is deprecated and will be removed in 0.7: it does not "
             "change results. Leave the item out of `Order([...])` instead",
@@ -89,13 +103,16 @@ class RemoveFromCart(_ItemEvent):
         super().__init__(item, **data)
 
 
-OrderItem = Union[str, CartItem, Tuple[str, int]]
+OrderItem = Union[ItemRef, CartItem, Tuple[ItemRef, int]]
 
 
 class Order(BaseModel):
-    """A finished purchase of `items`: item ids, `(id, quantity)` pairs or
-    `CartItem`s. The model reads only which items were bought; quantities and
-    `cart_id` do not change results."""
+    """A finished purchase of `items`: item ids, `Item`s, `(item, quantity)`
+    pairs or `CartItem`s. The model reads only which items were bought;
+    quantities and `cart_id` do not change results.
+
+    In a request over several catalogs the items can come from any of them:
+    each is in the catalog its `Item` or `CartItem(catalog_id=)` names."""
 
     type: Literal["order"] = "order"
 
@@ -135,12 +152,12 @@ class Order(BaseModel):
 
 
 def _order_item(entry: OrderItem) -> CartItem:
-    if isinstance(entry, str):
-        return CartItem(entry, 1)
+    if isinstance(entry, CartItem):
+        return entry
     if isinstance(entry, tuple):
-        item_id, quantity = entry
-        return CartItem(item_id, quantity)
-    return entry
+        item, quantity = entry
+        return CartItem(item, quantity)
+    return CartItem(entry, 1)
 
 
 UserEvent = Union[Search, AddToCart, View, RemoveFromCart, Order]
