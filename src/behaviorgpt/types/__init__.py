@@ -17,6 +17,7 @@ from behaviorgpt.types.events import (
 from behaviorgpt.types.http import (
     AddItemsJobDetails,
     AddKeywordsJobDetails,
+    CatalogMap,
     CatalogSummary,
     EmbedJobDetails,
     Item,
@@ -47,6 +48,7 @@ __all__ = [
     "EmbedJobDetails",
     "AddItemsJobDetails",
     "AddKeywordsJobDetails",
+    "CatalogMap",
     "CatalogSummary",
     "JobStatus",
     "ItemsRejected",
