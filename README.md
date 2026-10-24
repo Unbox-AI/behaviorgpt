@@ -117,6 +117,14 @@ for item in res.items:
     print(item.catalog_id, item.data["name"])
 ```
 
+`catalog_ids` also draws several catalogs on one map, one colour each, so you can see where they overlap. The first request takes a few minutes; later ones for the same catalogs return the stored map:
+
+```python
+page = client.umap(catalog_ids=[job.catalog_id, "retail_catalog"], wait=300)
+with open("map.html", "w") as f:
+    f.write(page)
+```
+
 [`docs/catalogs.md`](https://github.com/Unbox-AI/behaviorgpt/blob/main/docs/catalogs.md) has the details: catalog slots, what replacing an item keeps, how long keywords take, what happens when a job fails, and how a history names items of several catalogs.
 
 If mapping your data to the format is hard, open a coding agent in this directory and ask it to embed your catalog. The repo ships a skill at [`.claude/skills/embed-catalog/SKILL.md`](https://github.com/Unbox-AI/behaviorgpt/blob/main/.claude/skills/embed-catalog/SKILL.md) that walks the agent through mapping your columns, building and validating the parquet, checking image URLs, and uploading. Claude Code picks it up automatically; for other agents, point them at that file.

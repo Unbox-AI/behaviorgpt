@@ -5,7 +5,7 @@ import time
 import warnings
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Callable, Optional, TextIO
+from typing import Any, Callable, Optional, Sequence, TextIO
 from urllib.parse import quote
 
 import httpx
@@ -19,6 +19,7 @@ from behaviorgpt.resources._shared import handle_response
 from behaviorgpt.types import (
     AddItemsJobDetails,
     AddKeywordsJobDetails,
+    CatalogMap,
     CatalogSummary,
     EmbedJobDetails,
     JobStatus,
@@ -355,6 +356,16 @@ def umap_page(response: httpx.Response) -> str:
     return response.text
 
 
+def map_body(catalog_ids: Sequence[str]) -> dict:
+    if isinstance(catalog_ids, str):
+        raise TypeError("catalog_ids takes a list of catalog ids, not a string")
+    return {"catalog_ids": list(dict.fromkeys(catalog_ids))}
+
+
+def map_path(map_id: str, part: str = "") -> str:
+    return f"/maps/{quote(map_id, safe='')}" + (f"/{part}" if part else "")
+
+
 class JobWatcher:
     """The rules `wait_for_job` polls by, for the sync and the async client alike.
 
@@ -650,6 +661,24 @@ class Catalogs:
     def get_umap(self, *, catalog_id: str):
         return umap_page(self._client.get(f"/{catalog_id}/umap"))
 
+    def create_map(self, *, catalog_ids: Sequence[str]) -> CatalogMap:
+        """Ask for one map of these catalogs; it is drawn in the background
+        unless it already exists. `UnboxAIClient.umap(catalog_ids=...)` waits
+        for it and returns its page."""
+        response = self._client.post("/maps", json=map_body(catalog_ids))
+        return CatalogMap(**handle_response(response))
+
+    def get_map(self, map_id: str) -> CatalogMap:
+        return CatalogMap(**handle_response(self._client.get(map_path(map_id))))
+
+    def get_map_page(self, map_id: str) -> str:
+        return umap_page(self._client.get(map_path(map_id, "page")))
+
+    def get_map_points(self, map_id: str) -> dict:
+        """The map as data, to draw it yourself: one list per field and one
+        entry per item, `catalog` indexing `catalogs`."""
+        return handle_response(self._client.get(map_path(map_id, "points")))
+
     def list_catalogs(self) -> list[CatalogSummary]:
         return catalog_summaries(self._client.get("/catalogs"))
 
@@ -799,6 +828,19 @@ class AsyncCatalogs:
 
     async def get_umap(self, *, catalog_id: str) -> str:
         return umap_page(await self._client.get(f"/{catalog_id}/umap"))
+
+    async def create_map(self, *, catalog_ids: Sequence[str]) -> CatalogMap:
+        response = await self._client.post("/maps", json=map_body(catalog_ids))
+        return CatalogMap(**handle_response(response))
+
+    async def get_map(self, map_id: str) -> CatalogMap:
+        return CatalogMap(**handle_response(await self._client.get(map_path(map_id))))
+
+    async def get_map_page(self, map_id: str) -> str:
+        return umap_page(await self._client.get(map_path(map_id, "page")))
+
+    async def get_map_points(self, map_id: str) -> dict:
+        return handle_response(await self._client.get(map_path(map_id, "points")))
 
     async def list_catalogs(self) -> list[CatalogSummary]:
         return catalog_summaries(await self._client.get("/catalogs"))
