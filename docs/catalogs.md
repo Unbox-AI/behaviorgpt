@@ -1,6 +1,6 @@
 # Managing catalogs
 
-How catalogs are named and limited, how to update, list and delete them, and how to add the keywords that `sections` needs. For what the uploaded file must contain, see [catalog-format.md](catalog-format.md).
+How catalogs are named and limited, how to update, list and delete them, how to rank several together, and how to add the keywords that `sections` needs. For what the uploaded file must contain, see [catalog-format.md](catalog-format.md).
 
 ## Names and limits
 
@@ -35,6 +35,25 @@ client.delete_catalog("cat_...")
 - `list_catalogs()` returns your own catalogs, in any status, and the shared ones that are ready. `owned` marks your own.
 - `delete_catalog()` removes one of your catalogs with its items and frees its slot. It cannot be undone.
 - Deleting another key's catalog fails with status 404, the same as an unknown id. While a job runs for the catalog, deleting fails with status 409; try again once the job is ready or failed.
+
+## Several catalogs at once
+
+`complete`, `sections` and `similar_items` take `catalog_ids` instead of `catalog_id` to rank up to 5 catalogs together, for instance your own catalog and `retail_catalog`. The model reads the history once and scores the items of every catalog on the same scale, so the result is one ranking, not one per catalog.
+
+```python
+both = [job.catalog_id, "retail_catalog"]
+res = client.complete([View(shoe)], catalog_ids=both)
+for item in res.items:
+    print(item.catalog_id, item.id, item.data["name"])
+```
+
+- An item id is unique only within its catalog, so every item of a response says which catalog it is in, `item.catalog_id`. Single-catalog responses fill it in too.
+- An item in a history is in the first catalog of `catalog_ids` unless it names another: `View("sku-1", catalog_id="retail_catalog")`. An `Item` from a response knows its catalog, so `View(item)` and `Order([item])` need nothing more. An order can mix items of several catalogs.
+- In `filters`, `catalog_id` is the item's catalog: `{"catalog_id": "retail_catalog"}` keeps only its items, and `{"$not": {"catalog_id": job.catalog_id}}` leaves yours out.
+- `similar_items(item, catalog_ids=both)` finds the items most like `item` in all of them. The item is in its own catalog if it is an `Item`, else in `catalog_id`, else in the first.
+- `sections` weighs each catalog by its number of items when it groups them, so a small catalog does not crowd out a large one.
+- An item that names a catalog the request does not read is refused before anything is sent.
+- The catalogs must have been embedded by the same model, as their scores are compared. A catalog embedded by an older model is refused with status 409; upload it again to embed it with the current one.
 
 ## Keywords and sections
 
