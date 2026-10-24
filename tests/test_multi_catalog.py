@@ -204,3 +204,14 @@ def test_the_async_client_reads_several_catalogs(api: Api):
     assert resp.items[0].catalog_id == "retail_catalog"
     assert sections.sections[0].items[0].catalog_id == "retail_catalog"
     assert similar.items[0].catalog_id == "retail_catalog"
+
+
+def test_the_default_catalog_is_the_argument_then_the_environment(monkeypatch):
+    monkeypatch.setenv("UNBOXAI_API_KEY", "k")
+    monkeypatch.delenv("UNBOXAI_CATALOG_ID", raising=False)
+    assert UnboxAIClient("se").default_catalog_id == "retail_catalog"
+    monkeypatch.setenv("UNBOXAI_CATALOG_ID", "cat_env")
+    assert UnboxAIClient("se").default_catalog_id == "cat_env"
+    assert AsyncUnboxAIClient("se").default_catalog_id == "cat_env"
+    client = UnboxAIClient("se", default_catalog_id="cat_arg")
+    assert client.default_catalog_id == "cat_arg"

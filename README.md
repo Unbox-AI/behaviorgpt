@@ -93,6 +93,8 @@ job = client.embed(path, wait=True, timeout=1800.0)
 client.complete([Search("...")], catalog_id=job.catalog_id)
 ```
 
+To make your catalog the default, so calls need no `catalog_id`, set `UNBOXAI_CATALOG_ID=cat_...` or pass `default_catalog_id=` to the client.
+
 A catalog holds up to 100,000 items, and each API key holds 2 catalogs. The file name is the catalog's name, so uploading the same name again refreshes that catalog.
 
 Once it is embedded, you can add or replace items, list and delete catalogs, and generate the keywords that `sections` uses to group results under titles such as "black coats":

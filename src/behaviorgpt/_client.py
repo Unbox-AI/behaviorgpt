@@ -101,7 +101,7 @@ class _BaseClient:
         timezone: str = "UTC",
         api_key: Optional[str] = None,
         base_url: str = DEFAULT_BASE_URL,
-        default_catalog_id: str = "retail_catalog",
+        default_catalog_id: Optional[str] = None,
     ):
         self.api_key = api_key or os.environ.get("UNBOXAI_API_KEY")
         if not self.api_key:
@@ -109,7 +109,12 @@ class _BaseClient:
             raise AuthenticationError(msg)
 
         self.base_url = base_url
-        self.default_catalog_id = default_catalog_id
+        # the catalog of calls that name none
+        self.default_catalog_id = (
+            default_catalog_id
+            or os.environ.get("UNBOXAI_CATALOG_ID")
+            or "retail_catalog"
+        )
 
         self.domains = Domains(market=market)
         self.timezone = timezone
@@ -318,7 +323,7 @@ class UnboxAIClient(_BaseClient):
         timezone: str = "UTC",
         api_key: Optional[str] = None,
         base_url: str = DEFAULT_BASE_URL,
-        default_catalog_id: str = "retail_catalog",
+        default_catalog_id: Optional[str] = None,
         http_timeout: float | httpx.Timeout = DEFAULT_HTTP_TIMEOUT,
     ):
         super().__init__(
@@ -656,7 +661,7 @@ class AsyncUnboxAIClient(_BaseClient):
         timezone: str = "UTC",
         api_key: Optional[str] = None,
         base_url: str = DEFAULT_BASE_URL,
-        default_catalog_id: str = "retail_catalog",
+        default_catalog_id: Optional[str] = None,
         http_timeout: float | httpx.Timeout = DEFAULT_HTTP_TIMEOUT,
     ):
         super().__init__(
