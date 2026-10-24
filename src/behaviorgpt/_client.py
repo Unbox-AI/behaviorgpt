@@ -23,6 +23,7 @@ from behaviorgpt.types import (
     AddKeywordsJobDetails,
     AddToCart,
     CartItem,
+    CatalogMap,
     CatalogSummary,
     Domains,
     EmbedJobDetails,
@@ -623,7 +624,13 @@ class UnboxAIClient(_BaseClient):
         )
         return self.random_item(*args, **kwargs)
 
-    def umap(self, *, catalog_id: Optional[str] = None, wait: float = 0.0) -> str:
+    def umap(
+        self,
+        *,
+        catalog_id: Optional[str] = None,
+        catalog_ids: Optional[Sequence[str]] = None,
+        wait: float = 0.0,
+    ) -> str:
         """The catalog's UMAP, a 2D map of its items, as an HTML page.
 
         Maps exist only for catalogs of up to 100,000 items, and appear within
@@ -632,12 +639,27 @@ class UnboxAIClient(_BaseClient):
         (such as the shared `retail_catalog`) never get one. A missing map
         raises `UnboxAIError` with status 404 and says which case applies.
 
+        `catalog_ids` lays several catalogs out on one map instead, one colour
+        each, so items of different catalogs that sit close together are
+        alike. It is drawn on request, within a few minutes, and kept until one
+        of the catalogs is uploaded again. Above 100,000 items every catalog is
+        sampled evenly, so any catalog can be mapped this way, `retail_catalog`
+        too, alone or with others. A map still being drawn when `wait` is up
+        raises `UnboxAIError` with status 202; asking again later finds it.
+
         `wait` is how many seconds to keep asking while the map is missing,
         for a catalog that just became ready. A catalog that never gets a map
         raises only once that time is up.
         """
-        active_catalog: str = catalog_id or self.default_catalog_id
         deadline = time.monotonic() + wait
+        if catalog_ids is not None:
+            ids = self._target(catalog_id, catalog_ids).catalog_ids
+            joint = self.catalogs.create_map(catalog_ids=ids)
+            while not _map_ready(joint, deadline):
+                time.sleep(UMAP_POLL)
+                joint = self.catalogs.get_map(joint.map_id)
+            return self.catalogs.get_map_page(joint.map_id)
+        active_catalog: str = catalog_id or self.default_catalog_id
         while True:
             try:
                 return self.catalogs.get_umap(catalog_id=active_catalog)
@@ -864,10 +886,23 @@ class AsyncUnboxAIClient(_BaseClient):
         top = await self.complete(history=[], catalog_id=catalog_id, limit=window)
         return _pick_random(top, catalog_id or self.default_catalog_id)
 
-    async def umap(self, *, catalog_id: Optional[str] = None, wait: float = 0.0) -> str:
+    async def umap(
+        self,
+        *,
+        catalog_id: Optional[str] = None,
+        catalog_ids: Optional[Sequence[str]] = None,
+        wait: float = 0.0,
+    ) -> str:
         """The catalog's UMAP as an HTML page; see `UnboxAIClient.umap`."""
-        active_catalog: str = catalog_id or self.default_catalog_id
         deadline = time.monotonic() + wait
+        if catalog_ids is not None:
+            ids = self._target(catalog_id, catalog_ids).catalog_ids
+            joint = await self.catalogs.create_map(catalog_ids=ids)
+            while not _map_ready(joint, deadline):
+                await asyncio.sleep(UMAP_POLL)
+                joint = await self.catalogs.get_map(joint.map_id)
+            return await self.catalogs.get_map_page(joint.map_id)
+        active_catalog: str = catalog_id or self.default_catalog_id
         while True:
             try:
                 return await self.catalogs.get_umap(catalog_id=active_catalog)
@@ -875,6 +910,27 @@ class AsyncUnboxAIClient(_BaseClient):
                 if err.status_code != 404 or time.monotonic() + UMAP_POLL > deadline:
                     raise
             await asyncio.sleep(UMAP_POLL)
+
+
+def _map_ready(joint: CatalogMap, deadline: float) -> bool:
+    """Whether the map can be read; raises when it failed, or when it is still
+    being drawn and polling once more would pass `deadline`."""
+    if joint.status == "ready":
+        return True
+    catalogs = ", ".join(joint.catalog_ids)
+    if joint.status == "failed":
+        raise UnboxAIError(
+            f"the map of {catalogs} failed: {joint.error}",
+            response=joint.model_dump(mode="json"),
+        )
+    if time.monotonic() + UMAP_POLL > deadline:
+        raise UnboxAIError(
+            f"the map of {catalogs} is still being drawn ({joint.map_id}); pass "
+            "wait= (seconds) to wait for it, e.g. wait=300, or ask again later",
+            status_code=202,
+            response=joint.model_dump(mode="json"),
+        )
+    return False
 
 
 def _by_catalog(event: UserEvent, target: _Target) -> list[tuple[str, UserEvent]]:

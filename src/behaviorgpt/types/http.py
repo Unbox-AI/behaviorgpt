@@ -186,6 +186,19 @@ class CatalogSummary(BaseModel):
     owned: bool
 
 
+class CatalogMap(BaseModel):
+    """A map of several catalogs laid out together (`POST /maps`)."""
+
+    # the same for the same catalogs until one of them is uploaded again
+    map_id: str
+    # "building", "ready" or "failed"
+    status: str
+    catalog_ids: list[str]
+    requested_at: Optional[datetime] = None
+    # why the map failed; asking for it again retries it
+    error: Optional[str] = None
+
+
 class SimilarItemsRequest(BaseModel):
     model_config = ConfigDict(serialize_by_alias=True)
 
