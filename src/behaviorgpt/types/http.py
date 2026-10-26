@@ -54,6 +54,9 @@ class UnboxAIRequest(BaseModel):
     query: Optional[str] = Field(default=None)
 
     history: List[SessionEvent] = Field(default_factory=list)
+    # The API adds the events it has stored for this id (sent from a site's
+    # script or POST /events) to `history`.
+    user_id: Optional[str] = Field(default=None, min_length=1, max_length=512)
     store_id: str
     domains: Domains
     timezone: str = "UTC"

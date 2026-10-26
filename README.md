@@ -57,7 +57,7 @@ print(client.similar_items(res.items[0].id).names)
 ## How it works
 
 - **One call, many features.** Every request asks the same question: given what this person did, which items are they most likely to act on next? The history picks the feature. End it with a `Search` for search results, with a `View` for "more like this", with an `Order` for what they want after buying; leave it empty for a cold start.
-- **The whole sequence counts.** The model reads the history in order, so the same query means different things after different actions: "gloves" after "golf clubs" returns golf gloves. `market` on the client says where the user is, which helps most when the history is short.
+- **The whole sequence counts.** The model reads the history in order, so the same query means different things after different actions: "gloves" after "golf clubs" returns golf gloves. Who the person is and when they act count too ([who the shopper is](#who-the-shopper-is)), which helps most when the history is short.
 - **Items are read from their content, not their ids.** Each item is embedded from its name, brand, categories, image and price. That is why the model can rank a catalog it has never seen as soon as it is uploaded, with no interaction data and no training, and why those columns decide how well it does ([catalog format](https://github.com/Unbox-AI/behaviorgpt/blob/main/docs/catalog-format.md)).
 - **One pass per request.** Item vectors are computed once when the catalog is embedded, so ranking the whole catalog costs one forward pass over the history rather than one per item: the model itself takes under a millisecond per query, and most of an API call's time is the network.
 
@@ -78,6 +78,29 @@ client.complete([View(shoe)])                      # others also viewed
 client.complete([View(shoe)], predict="purchase")  # bought together
 client.complete([View(shoe), Order([shoe])])       # what they want after buying it
 ```
+
+## Who the shopper is
+
+Besides what the person did, BehaviorGPT reads who they are and when they act. Everything here is optional: what you leave out is unknown, and the model works without it.
+
+| What | Values | Where it comes from |
+|---|---|---|
+| Market | a two-letter country code, such as `SE` | `UnboxAIClient(market=...)`, or `User(market=...)` per call |
+| Gender | `"female"`, `"male"` | `User(gender=...)` |
+| Age group | `"<18"`, `"18-25"`, `"26-35"`, `"36-45"`, `"46-55"`, `"56-65"`, `"66-75"`, `"76-85"`, `">85"` | `User(age_group=...)`, or `User(age=34)`, which is sent as its group |
+| Local time | the year, month, day, weekday and hour of each event, in the person's time zone | `UnboxAIClient(timezone=...)`, or `User(timezone=...)` per call |
+
+```python
+from behaviorgpt import UnboxAIClient, User, View
+
+client = UnboxAIClient(market="SE", timezone="Europe/Stockholm")
+shopper = User(gender="female", age=34)
+res = client.complete([View("paB08NYK61PJ")], user=shopper)
+```
+
+`user=` works with `complete` and `sections`, on the async client too, and applies to the prediction and to every event of the history. Set the time zone: the default is UTC, and the hour and weekday the model reads are then UTC's, not the shopper's. Values outside the lists above raise an error rather than being sent. A raw age never leaves your server, only its group, and postal codes are not sent.
+
+If your site already sends events (the portal's browser script, or `POST /events`), pass the person's id instead of a history: `client.complete(user_id=uid, user=shopper)`. The API adds the events it has stored for that id to whatever `history` you pass. With the browser script, the id is in the `unbox_uid` cookie.
 
 ## Your own catalog
 
