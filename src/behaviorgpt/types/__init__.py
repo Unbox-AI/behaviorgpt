@@ -31,6 +31,7 @@ from behaviorgpt.types.http import (
     UnboxAIRequest,
     UnboxAIResponse,
 )
+from behaviorgpt.types.user import AGE_GROUPS, AgeGroup, User
 
 __all__ = [
     "UserEvent",
@@ -43,6 +44,9 @@ __all__ = [
     "UnboxAIResponse",
     "UnboxAIRequest",
     "Domains",
+    "User",
+    "AgeGroup",
+    "AGE_GROUPS",
     "UserHistoryInput",
     "SimilarItemsRequest",
     "EmbedJobDetails",

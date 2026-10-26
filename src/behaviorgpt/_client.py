@@ -42,6 +42,7 @@ from behaviorgpt.types import (
 )
 from behaviorgpt.types.events import ItemRef
 from behaviorgpt.types.http import RecommendationType
+from behaviorgpt.types.user import User
 
 # An embed upload streams the whole parquet, and the API answers only once the
 # file is stored and queued: httpx's 5 s default is too short for both.
@@ -166,14 +167,19 @@ class _BaseClient:
         max_trailing_searches: int = DEFAULT_TRAILING_SEARCHES,
         predict: Predict = "view",
         catalog_ids: Optional[Sequence[str]] = None,
+        user: Optional[User] = None,
+        user_id: Optional[str] = None,
     ) -> tuple[bool, UnboxAIRequest, _Target]:
         """The request `complete` sends, whether it goes to search, and the
         catalogs it reads."""
         if predict not in ("view", "purchase"):
             raise ValueError(f"predict must be 'view' or 'purchase', not {predict!r}")
         target = self._target(catalog_id, catalog_ids)
+        # who: the request and every event of its history say the same
+        domains = user.domains(self.domains.market) if user else self.domains
+        timezone = (user.timezone if user else None) or self.timezone
 
-        history_events = self.__from_sequence(target, history)
+        history_events = self.__from_sequence(target, history, domains, timezone)
         last_event = self._get_last_event(history)
 
         if isinstance(last_event, Search):
@@ -191,6 +197,9 @@ class _BaseClient:
                 filters=filters,
                 register_event=register_event,
                 max_trailing_searches=max_trailing_searches,
+                domains=domains,
+                timezone=timezone,
+                user_id=user_id,
             )
             return True, req, target
 
@@ -204,6 +213,9 @@ class _BaseClient:
             recommendation_type=(
                 RecommendationType(name="buy_next") if predict == "purchase" else None
             ),
+            domains=domains,
+            timezone=timezone,
+            user_id=user_id,
         )
         return False, req, target
 
@@ -217,10 +229,20 @@ class _BaseClient:
         max_items_per_section: int,
         min_items_per_section: int,
         catalog_ids: Optional[Sequence[str]] = None,
+        user: Optional[User] = None,
+        user_id: Optional[str] = None,
     ) -> tuple[dict, _Target]:
         """The body `sections` sends, and the catalogs it reads."""
         _, req, target = self._complete_request(
-            history, 10, 0, catalog_id, filters, register_event, catalog_ids=catalog_ids
+            history,
+            10,
+            0,
+            catalog_id,
+            filters,
+            register_event,
+            catalog_ids=catalog_ids,
+            user=user,
+            user_id=user_id,
         )
         body = sections_body(
             req, max_sections, max_items_per_section, min_items_per_section
@@ -228,7 +250,11 @@ class _BaseClient:
         return body, target
 
     def __from_sequence(
-        self, target: _Target, context: UserHistoryInput
+        self,
+        target: _Target,
+        context: UserHistoryInput,
+        domains: Domains,
+        timezone: str,
     ) -> list[SessionEvent]:
         events: list[SessionEvent] = []
 
@@ -278,6 +304,8 @@ class _BaseClient:
                             session_id,
                             catalog,
                             event_time + timedelta(microseconds=j),
+                            domains,
+                            timezone,
                         )
                     )
 
@@ -292,12 +320,18 @@ class _BaseClient:
         return events
 
     def __to_session_evt(
-        self, event: UserEvent, session_id: str, catalog_id: str, timestamp: datetime
+        self,
+        event: UserEvent,
+        session_id: str,
+        catalog_id: str,
+        timestamp: datetime,
+        domains: Domains,
+        timezone: str,
     ) -> SessionEvent:
         return SessionEvent(
             store_id=catalog_id,
-            domains=self.domains,
-            timezone=self.timezone,
+            domains=domains,
+            timezone=timezone,
             event=event,
             session_id=session_id,
             timestamp=timestamp,
@@ -347,7 +381,7 @@ class UnboxAIClient(_BaseClient):
 
     def complete(
         self,
-        history: UserHistoryInput,
+        history: UserHistoryInput = (),
         limit: int = 10,
         offset: int = 0,
         *,
@@ -357,6 +391,8 @@ class UnboxAIClient(_BaseClient):
         register_event: bool = False,
         max_trailing_searches: int = DEFAULT_TRAILING_SEARCHES,
         predict: Predict = "view",
+        user: Optional[User] = None,
+        user_id: Optional[str] = None,
     ) -> UnboxAIResponse:
         """Rank the items most likely to come after `history`.
 
@@ -377,6 +413,15 @@ class UnboxAIClient(_BaseClient):
         catalog_id=...)`, or are `Item`s of an earlier response, which know
         theirs. In `filters`, `catalog_id` is the item's catalog, e.g.
         `{"catalog_id": "retail_catalog"}`.
+
+        `user` says who the shopper is, `User(gender="female", age=34)`, and
+        where, `User(market="SE", timezone="Europe/Stockholm")`: BehaviorGPT
+        reads it with the history and the prediction. Left out, the gender and
+        age are unknown and the market and time zone are the client's.
+
+        `user_id` adds the events the API has stored for that person, sent by
+        your site's script (the cookie `unbox_uid`) or with `POST /events`, to
+        `history`, which can then be left out.
         """
         is_search, req, target = self._complete_request(
             history,
@@ -388,6 +433,8 @@ class UnboxAIClient(_BaseClient):
             max_trailing_searches,
             predict,
             catalog_ids,
+            user,
+            user_id,
         )
         endpoint = self.search if is_search else self.recommendations
         response = endpoint.create(payload=req, headers=target.headers)
@@ -396,7 +443,7 @@ class UnboxAIClient(_BaseClient):
 
     def sections(
         self,
-        history: UserHistoryInput,
+        history: UserHistoryInput = (),
         *,
         catalog_id: Optional[str] = None,
         catalog_ids: Optional[Sequence[str]] = None,
@@ -405,6 +452,8 @@ class UnboxAIClient(_BaseClient):
         min_items_per_section: int = 5,
         filters: Optional[dict[str, Any]] = None,
         register_event: bool = False,
+        user: Optional[User] = None,
+        user_id: Optional[str] = None,
     ) -> SectionsResponse:
         """The items most likely to come after `history`, grouped into titled
         sections such as "black coats", best section first.
@@ -432,6 +481,8 @@ class UnboxAIClient(_BaseClient):
             max_items_per_section,
             min_items_per_section,
             catalog_ids,
+            user,
+            user_id,
         )
         response = self._sections.create(body, headers=target.headers)
         target.label(item for section in response.sections for item in section.items)
@@ -715,7 +766,7 @@ class AsyncUnboxAIClient(_BaseClient):
 
     async def complete(
         self,
-        history: UserHistoryInput,
+        history: UserHistoryInput = (),
         limit: int = 10,
         offset: int = 0,
         *,
@@ -725,6 +776,8 @@ class AsyncUnboxAIClient(_BaseClient):
         register_event: bool = False,
         max_trailing_searches: int = DEFAULT_TRAILING_SEARCHES,
         predict: Predict = "view",
+        user: Optional[User] = None,
+        user_id: Optional[str] = None,
     ) -> UnboxAIResponse:
         """Rank the items most likely to come after `history`; see
         `UnboxAIClient.complete`."""
@@ -738,6 +791,8 @@ class AsyncUnboxAIClient(_BaseClient):
             max_trailing_searches,
             predict,
             catalog_ids,
+            user,
+            user_id,
         )
         endpoint = self.search if is_search else self.recommendations
         response = await endpoint.create(payload=req, headers=target.headers)
@@ -746,7 +801,7 @@ class AsyncUnboxAIClient(_BaseClient):
 
     async def sections(
         self,
-        history: UserHistoryInput,
+        history: UserHistoryInput = (),
         *,
         catalog_id: Optional[str] = None,
         catalog_ids: Optional[Sequence[str]] = None,
@@ -755,6 +810,8 @@ class AsyncUnboxAIClient(_BaseClient):
         min_items_per_section: int = 5,
         filters: Optional[dict[str, Any]] = None,
         register_event: bool = False,
+        user: Optional[User] = None,
+        user_id: Optional[str] = None,
     ) -> SectionsResponse:
         """Items grouped into titled sections; see `UnboxAIClient.sections`."""
         body, target = self._sections_request(
@@ -766,6 +823,8 @@ class AsyncUnboxAIClient(_BaseClient):
             max_items_per_section,
             min_items_per_section,
             catalog_ids,
+            user,
+            user_id,
         )
         response = await self._sections.create(body, headers=target.headers)
         target.label(item for section in response.sections for item in section.items)
