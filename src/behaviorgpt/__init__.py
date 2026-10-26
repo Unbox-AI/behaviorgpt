@@ -18,6 +18,7 @@ from behaviorgpt.types.events import (
     Search,
     View,
 )
+from behaviorgpt.types.user import User
 
 __all__ = [
     "Search",
@@ -26,6 +27,7 @@ __all__ = [
     "RemoveFromCart",
     "Order",
     "CartItem",
+    "User",
     "UnboxAIClient",
     "AsyncUnboxAIClient",
     "ProgressBar",
