@@ -14,6 +14,7 @@ import httpx
 
 from behaviorgpt._exceptions import AuthenticationError, UnboxAIError
 from behaviorgpt.resources.catalogs import AsyncCatalogs, Catalogs
+from behaviorgpt.resources.events import AsyncEvents, Events
 from behaviorgpt.resources.recommendations import AsyncRecommender, Recommender
 from behaviorgpt.resources.requests import UnboxAIRequester
 from behaviorgpt.resources.search import AsyncSearcher, Searcher
@@ -376,6 +377,7 @@ class UnboxAIClient(_BaseClient):
         self.recommendations = Recommender(self._http_client)
         self.search = Searcher(self._http_client)
         self.catalogs = Catalogs(self._http_client)
+        self.events = Events(self._http_client, self)
         self._sections = Sectioner(self._http_client)
 
     def complete(
@@ -752,6 +754,7 @@ class AsyncUnboxAIClient(_BaseClient):
         self.recommendations = AsyncRecommender(self._http_client)
         self.search = AsyncSearcher(self._http_client)
         self.catalogs = AsyncCatalogs(self._http_client)
+        self.events = AsyncEvents(self._http_client, self)
         self._sections = AsyncSectioner(self._http_client)
 
     async def __aenter__(self) -> "AsyncUnboxAIClient":
