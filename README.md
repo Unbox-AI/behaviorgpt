@@ -152,6 +152,8 @@ with open("map.html", "w") as f:
 
 If mapping your data to the format is hard, open a coding agent in this directory and ask it to embed your catalog. The repo ships a skill at [`.claude/skills/embed-catalog/SKILL.md`](https://github.com/Unbox-AI/behaviorgpt/blob/main/.claude/skills/embed-catalog/SKILL.md) that walks the agent through mapping your columns, building and validating the parquet, checking image URLs, and uploading. Claude Code picks it up automatically; for other agents, point them at that file.
 
+To build an app of your own that opens from your Home on [portal.unboxai.com](https://portal.unboxai.com) on the catalogs selected there, see "Your own app" under "Build with it" on Home. The skill [`.claude/skills/portal-app/SKILL.md`](https://github.com/Unbox-AI/behaviorgpt/blob/main/.claude/skills/portal-app/SKILL.md) builds one with an agent.
+
 To try your catalog in the [storefront demo](https://behaviorgpt.unboxai.com/), select the **BehaviorGPT V4.0-12.5B** model, choose **Bring your own catalog** and enter your API key. Images must be publicly reachable for the demo to display them.
 
 ## The notebook
