@@ -261,15 +261,24 @@ class _BaseClient:
         if not context:
             return events
 
+        sessions: Sequence[Sequence[UserEvent]] = (
+            cast(Sequence[Sequence[UserEvent]], context)
+            if isinstance(context[0], (list, tuple))
+            else [cast(Sequence[UserEvent], context)]
+        )
+        # Events are 1 ms apart, sessions `gap_ms` apart, and the whole history ends
+        # at least a second before now: the API reads only the events before the
+        # request, by its own clock, so a history stamped from now on would lose
+        # its later sessions and the tail of a long one.
+        gap_ms = max(len(s) for s in sessions) + 1000
+        start = datetime.now(tz=UTC) - timedelta(milliseconds=gap_ms * len(sessions))
+
         # Track cart state within a single session
         def _process_session_events(
             session_events: Sequence[UserEvent], session_id: str, session_offset: int
         ):
             cart_state: dict[tuple[Optional[str], str], int] = defaultdict(int)
             current_cart_id = str(uuid4())
-
-            # Base time for the start of the sequence
-            base_time = datetime.now(tz=UTC)
 
             for i, ev in enumerate(session_events):
                 if isinstance(ev, AddToCart):
@@ -290,12 +299,7 @@ class _BaseClient:
                     cart_state.clear()
                     current_cart_id = str(uuid4())
 
-                # Add 1 millisecond for each event to guarantee network-safe distinct
-                # ordering. Factors in a session offset just in case 2D arrays
-                # were passed
-                event_time = base_time + timedelta(
-                    milliseconds=(session_offset * 1000) + i
-                )
+                event_time = start + timedelta(milliseconds=session_offset * gap_ms + i)
 
                 for j, (catalog, event) in enumerate(_by_catalog(ev, target)):
                     events.append(
@@ -309,13 +313,8 @@ class _BaseClient:
                         )
                     )
 
-        if isinstance(context[0], (list, tuple)):
-            context_2d = cast(Sequence[Sequence[UserEvent]], context)
-            for session_index, session_sequence in enumerate(context_2d):
-                _process_session_events(session_sequence, str(uuid4()), session_index)
-        else:
-            context_1d = cast(Sequence[UserEvent], context)
-            _process_session_events(context_1d, str(uuid4()), 0)
+        for session_index, session_sequence in enumerate(sessions):
+            _process_session_events(session_sequence, str(uuid4()), session_index)
 
         return events
 
