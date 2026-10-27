@@ -45,6 +45,8 @@ for item in res.items:
     print(item.catalog_id, item.data["name"])
 ```
 
+For an app that reads events, read each stream with `client.events.list(stream=...)`, or every stream when `streams` is missing; `user_id=` narrows it to one shopper. `client.complete(user_id=...)` ranks for a shopper from their stored events.
+
 With one id, `catalog_ids=[cat]` and `catalog_id=cat` are the same. If the app opens on no catalog and none arrives, fall back to `UNBOXAI_CATALOG_ID` or ask; don't guess an id. The API refuses a catalog the key can't read and catalogs that can't be ranked together; show its message rather than an empty result.
 
 ## Workflow

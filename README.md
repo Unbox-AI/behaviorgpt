@@ -102,6 +102,18 @@ res = client.complete([View("paB08NYK61PJ")], user=shopper)
 
 If your site already sends events (the portal's browser script, or `POST /events`), pass the person's id instead of a history: `client.complete(user_id=uid, user=shopper)`. The API adds the events it has stored for that id to whatever `history` you pass. With the browser script, the id is in the `unbox_uid` cookie.
 
+From your server, record events with `client.events.track`, and read back what your account has stored with `client.events.list`, newest first:
+
+```python
+client.events.track(uid, View(shoe), user=shopper)
+client.events.track(uid, Order([shoe]), timestamp=paid_at)  # sent later than it happened
+
+client.events.list(user_id=uid, limit=20)
+client.events.list(stream="api", types=["order"])  # what your server sent; a stream is also a publishable key or an import
+```
+
+An event's catalog is `catalog_id=`, else the one an `Item` of a response names, else the client's default. Pass `timestamp=` whenever you send an event after it happened, so the history stays in order.
+
 ## Your own catalog
 
 The model can only return items it knows about. Out of the box the client uses `retail_catalog`, a sample retail catalog. To use the model on your own data, upload your catalog as a parquet file. A catalog doesn't have to be products for sale: artworks, articles, listings or anything else people browse and pick from work the same way.

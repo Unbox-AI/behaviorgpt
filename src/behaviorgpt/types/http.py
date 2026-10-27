@@ -90,6 +90,17 @@ class UnboxAIRequest(BaseModel):
         return self
 
 
+class TrackedEvent(BaseModel):
+    """An event as the API stored it: `event` is as the API stores it, and
+    `stream` is where it came from (a publishable key, "api", an import)."""
+
+    user_id: str
+    timestamp: datetime
+    event: dict
+    store_id: Optional[str] = None
+    stream: Optional[str] = None
+
+
 class UnboxAIResponse(BaseModel):
     items: List[Item]
     offset: int
