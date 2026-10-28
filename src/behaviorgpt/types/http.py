@@ -75,6 +75,9 @@ class UnboxAIRequest(BaseModel):
     # Recommendations only: `buy_next` predicts what else goes in the same
     # purchase. Unset, the server predicts the next item viewed.
     type: Optional[RecommendationType] = None
+    # The item fields each result's `data` holds; unset, all of them.
+    # `top_terms` is returned only when named here.
+    fields_to_include: Optional[List[str]] = None
 
     @field_validator("timestamp")
     @classmethod
@@ -88,6 +91,17 @@ class UnboxAIRequest(BaseModel):
         if self.offset + self.limit > 10000:
             raise ValueError("Offset + limit cannot exceed 10,000")
         return self
+
+
+class TrackedEvent(BaseModel):
+    """An event as the API stored it: `event` is as the API stores it, and
+    `stream` is where it came from (a publishable key, "api", an import)."""
+
+    user_id: str
+    timestamp: datetime
+    event: dict
+    store_id: Optional[str] = None
+    stream: Optional[str] = None
 
 
 class UnboxAIResponse(BaseModel):
@@ -318,6 +332,25 @@ class SectionsResponse(BaseModel):
     @property
     def titles(self) -> List[str]:
         return [s.title for s in self.sections]
+
+
+class Suggestion(BaseModel):
+    """A search suggestion and the item it came from."""
+
+    text: str
+    # "keyword", one of the item's search terms, or "name", the item's name
+    # for an item without keywords
+    source: Literal["keyword", "name"]
+    # its `data` holds only the item's name and search terms
+    item: Item
+
+
+class AutocompleteResponse(BaseModel):
+    suggestions: List[Suggestion]
+
+    @property
+    def texts(self) -> List[str]:
+        return [s.text for s in self.suggestions]
 
 
 DEPRECATED_NAMES = {

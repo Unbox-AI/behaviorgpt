@@ -17,6 +17,7 @@ from behaviorgpt.types.events import (
 from behaviorgpt.types.http import (
     AddItemsJobDetails,
     AddKeywordsJobDetails,
+    AutocompleteResponse,
     CatalogMap,
     CatalogSummary,
     EmbedJobDetails,
@@ -28,6 +29,8 @@ from behaviorgpt.types.http import (
     Section,
     SectionsResponse,
     SimilarItemsRequest,
+    Suggestion,
+    TrackedEvent,
     UnboxAIRequest,
     UnboxAIResponse,
 )
@@ -62,6 +65,9 @@ __all__ = [
     "CartItem",
     "Section",
     "SectionsResponse",
+    "Suggestion",
+    "AutocompleteResponse",
+    "TrackedEvent",
 ]
 
 
