@@ -114,6 +114,22 @@ client.events.list(stream="api", types=["order"])  # what your server sent; a st
 
 An event's catalog is `catalog_id=`, else the one an `Item` of a response names, else the client's default. Pass `timestamp=` whenever you send an event after it happened, so the history stays in order.
 
+## Search suggestions
+
+`autocomplete` suggests searches as the person types. BehaviorGPT ranks the items they most likely want given their history and the text so far, and each top item offers the first of its keywords that continues the text, allowing for a typo. So the same letters give different suggestions to different people:
+
+```python
+client.autocomplete("coffee m").texts
+# ['coffee maker', 'ninja coffee maker', 'coffee', 'keurig coffee machine', ...]
+
+client.autocomplete("gl", [Search("winter jacket")]).texts
+# ['gloves', 'mens gloves', 'winter gloves', ...]
+```
+
+Each suggestion has its `text`, the `item` it came from, and its `source`: `"keyword"`, or `"name"` for an item without keywords, which offers its name instead (`add_keywords` generates them, see [your own catalog](#your-own-catalog)). Nothing is recorded, so call it on each keystroke (after a short pause, about 150 ms, and cancel the previous call), and call `complete` with `Search(...)` once the person searches. Empty text suggests what comes after the history. It takes `catalog_id`, `catalog_ids`, `user` and `user_id` as `complete` does; `limit` is at most 20.
+
+When a few letters after earlier searches read as more of the same ("gl" after "golf clubs" ranks golf clubs), and too few of those items continue the text, the rest of the suggestions come from a second ranking of the text alone.
+
 ## Your own catalog
 
 The model can only return items it knows about. Out of the box the client uses `retail_catalog`, a sample retail catalog. To use the model on your own data, upload your catalog as a parquet file. A catalog doesn't have to be products for sale: artworks, articles, listings or anything else people browse and pick from work the same way.
@@ -132,7 +148,7 @@ To make your catalog the default, so calls need no `catalog_id`, set `UNBOXAI_CA
 
 A catalog holds up to 100,000 items, and each API key holds 2 catalogs. The file name is the catalog's name, so uploading the same name again refreshes that catalog.
 
-Once it is embedded, you can add or replace items, list and delete catalogs, and generate the keywords that `sections` uses to group results under titles such as "black coats":
+Once it is embedded, you can add or replace items, list and delete catalogs, and generate the keywords that `sections` uses to group results under titles such as "black coats", and `autocomplete` suggests:
 
 ```python
 client.add_items("new_items.parquet", catalog_id=job.catalog_id, wait=True)

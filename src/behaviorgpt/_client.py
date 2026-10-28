@@ -12,6 +12,7 @@ from uuid import uuid4
 
 import httpx
 
+from behaviorgpt._autocomplete import suggest
 from behaviorgpt._exceptions import AuthenticationError, UnboxAIError
 from behaviorgpt.resources.catalogs import AsyncCatalogs, Catalogs
 from behaviorgpt.resources.events import AsyncEvents, Events
@@ -23,6 +24,7 @@ from behaviorgpt.types import (
     AddItemsJobDetails,
     AddKeywordsJobDetails,
     AddToCart,
+    AutocompleteResponse,
     CartItem,
     CatalogMap,
     CatalogSummary,
@@ -50,6 +52,11 @@ from behaviorgpt.types.user import User
 DEFAULT_HTTP_TIMEOUT = httpx.Timeout(120.0, connect=10.0, write=300.0)
 DEFAULT_BASE_URL = "https://behaviorgpt-northeurope.api.unboxai.com/v1"
 DEFAULT_TRAILING_SEARCHES = 3
+# autocomplete reads this many ranked items for suggestions; at most the
+# request's limit, 100
+DEFAULT_SUGGESTION_CANDIDATES = 50
+MAX_SUGGESTIONS = 20
+SUGGESTION_FIELDS = ["name", "top_terms"]
 UMAP_POLL = 5.0
 
 Predict = Literal["view", "purchase"]
@@ -219,6 +226,47 @@ class _BaseClient:
             user_id=user_id,
         )
         return False, req, target
+
+    def _autocomplete_request(
+        self,
+        text: str,
+        history: UserHistoryInput,
+        limit: int,
+        candidates: int,
+        catalog_id: Optional[str],
+        catalog_ids: Optional[Sequence[str]],
+        filters: Optional[dict[str, Any]],
+        user: Optional[User],
+        user_id: Optional[str],
+        max_trailing_searches: int = DEFAULT_TRAILING_SEARCHES,
+    ) -> tuple[bool, UnboxAIRequest, _Target]:
+        """The ranking `autocomplete` reads: the history with the text typed so
+        far as its last search, recorded nowhere. Empty text ranks what comes
+        after the history."""
+        if not 1 <= limit <= MAX_SUGGESTIONS:
+            raise ValueError(
+                f"limit must be between 1 and {MAX_SUGGESTIONS}, got {limit}"
+            )
+        if not limit <= candidates <= 100:
+            raise ValueError(
+                f"candidates must be between limit ({limit}) and 100, got {candidates}"
+            )
+        if text.strip():
+            history = _with_search(history, text.strip())
+        is_search, req, target = self._complete_request(
+            history,
+            candidates,
+            0,
+            catalog_id,
+            filters,
+            False,
+            max_trailing_searches,
+            catalog_ids=catalog_ids,
+            user=user,
+            user_id=user_id,
+        )
+        req.fields_to_include = SUGGESTION_FIELDS
+        return is_search, req, target
 
     def _sections_request(
         self,
@@ -441,6 +489,66 @@ class UnboxAIClient(_BaseClient):
         response = endpoint.create(payload=req, headers=target.headers)
         target.label(response.items)
         return response
+
+    def autocomplete(
+        self,
+        text: str,
+        history: UserHistoryInput = (),
+        limit: int = 5,
+        *,
+        catalog_id: Optional[str] = None,
+        catalog_ids: Optional[Sequence[str]] = None,
+        filters: Optional[dict[str, Any]] = None,
+        user: Optional[User] = None,
+        user_id: Optional[str] = None,
+        candidates: int = DEFAULT_SUGGESTION_CANDIDATES,
+    ) -> AutocompleteResponse:
+        """Search suggestions for `text`, what the person has typed so far,
+        such as `"coffee m"` -> `"coffee maker"`, `"espresso machine"`.
+
+        BehaviorGPT ranks the items this person most likely wants after
+        `history` with `text` as their search, and each of the top
+        `candidates` items, best first, offers the first of its search terms
+        that continues `text`, allowing for a typo. So the same letters give
+        different suggestions after different histories. Items without
+        keywords (see `add_keywords`) offer their names instead.
+
+        Nothing is recorded: call it on every keystroke, and `complete` with
+        `Search(...)` once the person searches. Empty `text` suggests what
+        comes after the history. `limit` is at most 20.
+        """
+        is_search, req, target = self._autocomplete_request(
+            text,
+            history,
+            limit,
+            candidates,
+            catalog_id,
+            catalog_ids,
+            filters,
+            user,
+            user_id,
+        )
+        endpoint = self.search if is_search else self.recommendations
+        response = endpoint.create(payload=req, headers=target.headers)
+        target.label(response.items)
+        found = suggest(response.items, text, limit)
+        if _needs_text_alone(found, limit, text, history, user_id):
+            _, req, target = self._autocomplete_request(
+                text,
+                history,
+                limit,
+                candidates,
+                catalog_id,
+                catalog_ids,
+                filters,
+                user,
+                user_id,
+                max_trailing_searches=1,
+            )
+            response = self.search.create(payload=req, headers=target.headers)
+            target.label(response.items)
+            found = suggest(response.items, text, limit, found)
+        return AutocompleteResponse(suggestions=found)
 
     def sections(
         self,
@@ -801,6 +909,53 @@ class AsyncUnboxAIClient(_BaseClient):
         target.label(response.items)
         return response
 
+    async def autocomplete(
+        self,
+        text: str,
+        history: UserHistoryInput = (),
+        limit: int = 5,
+        *,
+        catalog_id: Optional[str] = None,
+        catalog_ids: Optional[Sequence[str]] = None,
+        filters: Optional[dict[str, Any]] = None,
+        user: Optional[User] = None,
+        user_id: Optional[str] = None,
+        candidates: int = DEFAULT_SUGGESTION_CANDIDATES,
+    ) -> AutocompleteResponse:
+        """Search suggestions for `text`; see `UnboxAIClient.autocomplete`."""
+        is_search, req, target = self._autocomplete_request(
+            text,
+            history,
+            limit,
+            candidates,
+            catalog_id,
+            catalog_ids,
+            filters,
+            user,
+            user_id,
+        )
+        endpoint = self.search if is_search else self.recommendations
+        response = await endpoint.create(payload=req, headers=target.headers)
+        target.label(response.items)
+        found = suggest(response.items, text, limit)
+        if _needs_text_alone(found, limit, text, history, user_id):
+            _, req, target = self._autocomplete_request(
+                text,
+                history,
+                limit,
+                candidates,
+                catalog_id,
+                catalog_ids,
+                filters,
+                user,
+                user_id,
+                max_trailing_searches=1,
+            )
+            response = await self.search.create(payload=req, headers=target.headers)
+            target.label(response.items)
+            found = suggest(response.items, text, limit, found)
+        return AutocompleteResponse(suggestions=found)
+
     async def sections(
         self,
         history: UserHistoryInput = (),
@@ -992,6 +1147,29 @@ def _map_ready(joint: CatalogMap, deadline: float) -> bool:
             response=joint.model_dump(mode="json"),
         )
     return False
+
+
+def _needs_text_alone(
+    found: list,
+    limit: int,
+    text: str,
+    history: UserHistoryInput,
+    user_id: Optional[str],
+) -> bool:
+    """Whether to fill out suggestions from a ranking of the text alone. With
+    earlier searches, a few letters read as one with them ("golf clubs", "gl"
+    as more golf clubs), so the top items may offer no term that continues
+    them."""
+    return len(found) < limit and bool(text.strip()) and bool(history or user_id)
+
+
+def _with_search(history: UserHistoryInput, text: str) -> list:
+    """`history` with a search for `text` at the end of its last session."""
+    if history and isinstance(history[0], (list, tuple)):
+        sessions = [list(session) for session in history]
+        sessions[-1].append(Search(text))
+        return sessions
+    return [*history, Search(text)]
 
 
 def _by_catalog(event: UserEvent, target: _Target) -> list[tuple[str, UserEvent]]:
