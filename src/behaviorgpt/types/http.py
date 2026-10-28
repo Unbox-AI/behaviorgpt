@@ -75,6 +75,9 @@ class UnboxAIRequest(BaseModel):
     # Recommendations only: `buy_next` predicts what else goes in the same
     # purchase. Unset, the server predicts the next item viewed.
     type: Optional[RecommendationType] = None
+    # The item fields each result's `data` holds; unset, all of them.
+    # `top_terms` is returned only when named here.
+    fields_to_include: Optional[List[str]] = None
 
     @field_validator("timestamp")
     @classmethod
@@ -329,6 +332,25 @@ class SectionsResponse(BaseModel):
     @property
     def titles(self) -> List[str]:
         return [s.title for s in self.sections]
+
+
+class Suggestion(BaseModel):
+    """A search suggestion and the item it came from."""
+
+    text: str
+    # "keyword", one of the item's search terms, or "name", the item's name
+    # for an item without keywords
+    source: Literal["keyword", "name"]
+    # its `data` holds only the item's name and search terms
+    item: Item
+
+
+class AutocompleteResponse(BaseModel):
+    suggestions: List[Suggestion]
+
+    @property
+    def texts(self) -> List[str]:
+        return [s.text for s in self.suggestions]
 
 
 DEPRECATED_NAMES = {
