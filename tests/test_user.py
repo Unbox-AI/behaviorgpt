@@ -129,7 +129,8 @@ def test_a_user_id_reads_their_stored_events_without_a_history():
     c.complete(user_id="u-1842", user=User(gender="male"))
     body = json.loads(requests[0].content)
     assert requests[0].url.path.endswith("/recommendations")
-    assert (body["user_id"], body["history"]) == ("u-1842", [])
+    # the API takes a user_id or a history, and refuses both, even empty
+    assert body["user_id"] == "u-1842" and "history" not in body
     assert body["domains"]["gender"] == "male"
 
     c.complete([Search("sofa")], user_id="u-1842")

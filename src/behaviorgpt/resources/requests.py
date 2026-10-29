@@ -30,6 +30,8 @@ class UnboxAIRequester:
         recommendation_type: Optional[RecommendationType] = None,
         timezone: Optional[str] = None,
         user_id: Optional[str] = None,
+        record_call: Optional[bool] = None,
+        call: Optional[str] = None,
     ) -> UnboxAIRequest:
         return UnboxAIRequest(
             query=query,
@@ -46,4 +48,6 @@ class UnboxAIRequester:
             num_candidates=num_candidates,
             max_trailing_searches=max_trailing_searches,
             type=recommendation_type,
+            record_call=record_call,
+            call=call,
         )
