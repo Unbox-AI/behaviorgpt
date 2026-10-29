@@ -57,6 +57,8 @@ DEFAULT_TRAILING_SEARCHES = 3
 DEFAULT_SUGGESTION_CANDIDATES = 50
 MAX_SUGGESTIONS = 20
 SUGGESTION_FIELDS = ["name", "top_terms"]
+# what an autocomplete call is recorded as for its user
+AUTOCOMPLETE_CALL = "autocomplete"
 UMAP_POLL = 5.0
 
 Predict = Literal["view", "purchase"]
@@ -177,6 +179,8 @@ class _BaseClient:
         catalog_ids: Optional[Sequence[str]] = None,
         user: Optional[User] = None,
         user_id: Optional[str] = None,
+        record_call: Optional[bool] = None,
+        call: Optional[str] = None,
     ) -> tuple[bool, UnboxAIRequest, _Target]:
         """The request `complete` sends, whether it goes to search, and the
         catalogs it reads."""
@@ -189,6 +193,12 @@ class _BaseClient:
 
         history_events = self.__from_sequence(target, history, domains, timezone)
         last_event = self._get_last_event(history)
+        is_search = isinstance(last_event, Search)
+        if user_id is not None and history_events[: -1 if is_search else None]:
+            raise ValueError(
+                "with user_id, BehaviorGPT reads the history it has stored for "
+                "them: pass no history, or only the Search(...) to run for them"
+            )
 
         if isinstance(last_event, Search):
             if predict == "purchase":
@@ -208,6 +218,8 @@ class _BaseClient:
                 domains=domains,
                 timezone=timezone,
                 user_id=user_id,
+                record_call=record_call,
+                call=call,
             )
             return True, req, target
 
@@ -224,6 +236,8 @@ class _BaseClient:
             domains=domains,
             timezone=timezone,
             user_id=user_id,
+            record_call=record_call,
+            call=call,
         )
         return False, req, target
 
@@ -241,8 +255,10 @@ class _BaseClient:
         max_trailing_searches: int = DEFAULT_TRAILING_SEARCHES,
     ) -> tuple[bool, UnboxAIRequest, _Target]:
         """The ranking `autocomplete` reads: the history with the text typed so
-        far as its last search, recorded nowhere. Empty text ranks what comes
-        after the history."""
+        far as its last search, never recorded as a search. Empty text ranks
+        what comes after the history. For a `user_id` the call is recorded as
+        an "autocomplete" call, once: not the second ranking of the text alone
+        (`max_trailing_searches=1`)."""
         if not 1 <= limit <= MAX_SUGGESTIONS:
             raise ValueError(
                 f"limit must be between 1 and {MAX_SUGGESTIONS}, got {limit}"
@@ -264,6 +280,8 @@ class _BaseClient:
             catalog_ids=catalog_ids,
             user=user,
             user_id=user_id,
+            record_call=_record_call(user_id, max_trailing_searches != 1),
+            call=AUTOCOMPLETE_CALL,
         )
         req.fields_to_include = SUGGESTION_FIELDS
         return is_search, req, target
@@ -292,6 +310,7 @@ class _BaseClient:
             catalog_ids=catalog_ids,
             user=user,
             user_id=user_id,
+            record_call=_record_call(user_id, register_event),
         )
         body = sections_body(
             req, max_sections, max_items_per_section, min_items_per_section
@@ -437,7 +456,7 @@ class UnboxAIClient(_BaseClient):
         catalog_id: Optional[str] = None,
         catalog_ids: Optional[Sequence[str]] = None,
         filters: Optional[dict[str, Any]] = None,
-        register_event: bool = False,
+        register_event: Optional[bool] = None,
         max_trailing_searches: int = DEFAULT_TRAILING_SEARCHES,
         predict: Predict = "view",
         user: Optional[User] = None,
@@ -468,22 +487,31 @@ class UnboxAIClient(_BaseClient):
         reads it with the history and the prediction. Left out, the gender and
         age are unknown and the market and time zone are the client's.
 
-        `user_id` adds the events the API has stored for that person, sent by
-        your site's script (the cookie `unbox_uid`) or with `POST /events`, to
-        `history`, which can then be left out.
+        `user_id` reads the events the API has stored for that person, sent by
+        your site's script (the cookie `unbox_uid`) or with `events.track`, as
+        the history: pass no `history` with it, or only the `Search(...)` to
+        run for them.
+
+        A call for a `user_id` is recorded for them. A search becomes their own
+        event, so later calls read it; only the first page's, and only once:
+        not again when your site's script sends the same search. And what the
+        call showed is kept apart, listed by `events.calls`, never read as
+        history. `register_event=False` records neither.
         """
+        register = _registers(register_event, user_id)
         is_search, req, target = self._complete_request(
             history,
             limit,
             offset,
             catalog_id,
             filters,
-            register_event,
+            register,
             max_trailing_searches,
             predict,
             catalog_ids,
             user,
             user_id,
+            record_call=_record_call(user_id, register),
         )
         endpoint = self.search if is_search else self.recommendations
         response = endpoint.create(payload=req, headers=target.headers)
@@ -513,9 +541,11 @@ class UnboxAIClient(_BaseClient):
         different suggestions after different histories. Items without
         keywords (see `add_keywords`) offer their names instead.
 
-        Nothing is recorded: call it on every keystroke, and `complete` with
-        `Search(...)` once the person searches. Empty `text` suggests what
-        comes after the history. `limit` is at most 20.
+        The text is never recorded as a search: call it on every keystroke,
+        and `complete` with `Search(...)` once the person searches. For a
+        `user_id`, each call is listed by `events.calls` as an
+        `"autocomplete"` call, apart from their history. Empty `text`
+        suggests what comes after the history. `limit` is at most 20.
         """
         is_search, req, target = self._autocomplete_request(
             text,
@@ -560,7 +590,7 @@ class UnboxAIClient(_BaseClient):
         max_items_per_section: int = 25,
         min_items_per_section: int = 5,
         filters: Optional[dict[str, Any]] = None,
-        register_event: bool = False,
+        register_event: Optional[bool] = None,
         user: Optional[User] = None,
         user_id: Optional[str] = None,
     ) -> SectionsResponse:
@@ -580,12 +610,15 @@ class UnboxAIClient(_BaseClient):
         `catalog_ids` groups several catalogs together, as for `complete`: a
         section can hold items of any of them, each weighed by its catalog's
         size, so a small catalog does not crowd out a large one.
+
+        `user_id` and `register_event` work as for `complete`: the search is
+        recorded once even when `complete` ran it for them too.
         """
         body, target = self._sections_request(
             history,
             catalog_id,
             filters,
-            register_event,
+            _registers(register_event, user_id),
             max_sections,
             max_items_per_section,
             min_items_per_section,
@@ -883,7 +916,7 @@ class AsyncUnboxAIClient(_BaseClient):
         catalog_id: Optional[str] = None,
         catalog_ids: Optional[Sequence[str]] = None,
         filters: Optional[dict[str, Any]] = None,
-        register_event: bool = False,
+        register_event: Optional[bool] = None,
         max_trailing_searches: int = DEFAULT_TRAILING_SEARCHES,
         predict: Predict = "view",
         user: Optional[User] = None,
@@ -891,18 +924,20 @@ class AsyncUnboxAIClient(_BaseClient):
     ) -> UnboxAIResponse:
         """Rank the items most likely to come after `history`; see
         `UnboxAIClient.complete`."""
+        register = _registers(register_event, user_id)
         is_search, req, target = self._complete_request(
             history,
             limit,
             offset,
             catalog_id,
             filters,
-            register_event,
+            register,
             max_trailing_searches,
             predict,
             catalog_ids,
             user,
             user_id,
+            record_call=_record_call(user_id, register),
         )
         endpoint = self.search if is_search else self.recommendations
         response = await endpoint.create(payload=req, headers=target.headers)
@@ -966,7 +1001,7 @@ class AsyncUnboxAIClient(_BaseClient):
         max_items_per_section: int = 25,
         min_items_per_section: int = 5,
         filters: Optional[dict[str, Any]] = None,
-        register_event: bool = False,
+        register_event: Optional[bool] = None,
         user: Optional[User] = None,
         user_id: Optional[str] = None,
     ) -> SectionsResponse:
@@ -975,7 +1010,7 @@ class AsyncUnboxAIClient(_BaseClient):
             history,
             catalog_id,
             filters,
-            register_event,
+            _registers(register_event, user_id),
             max_sections,
             max_items_per_section,
             min_items_per_section,
@@ -1147,6 +1182,23 @@ def _map_ready(joint: CatalogMap, deadline: float) -> bool:
             response=joint.model_dump(mode="json"),
         )
     return False
+
+
+def _registers(register_event: Optional[bool], user_id: Optional[str]) -> bool:
+    """Whether a call records its search as the user's: by default when it is
+    made for a user_id."""
+    if register_event and user_id is None:
+        raise ValueError(
+            "register_event=True needs a user_id: a search is recorded as the "
+            "search of the person it was made for"
+        )
+    return user_id is not None if register_event is None else register_event
+
+
+def _record_call(user_id: Optional[str], record: bool) -> Optional[bool]:
+    """What a request says about recording the call for its user: nothing, the
+    API's default, unless it should not."""
+    return False if user_id is not None and not record else None
 
 
 def _needs_text_alone(
