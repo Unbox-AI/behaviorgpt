@@ -18,6 +18,14 @@ from behaviorgpt.types.events import (
     Search,
     View,
 )
+from behaviorgpt.types.shop import (
+    Only,
+    ShopItem,
+    ShopPage,
+    ShopPicture,
+    ShopSection,
+    ShopSuggestion,
+)
 from behaviorgpt.types.user import User
 
 __all__ = [
@@ -28,6 +36,12 @@ __all__ = [
     "Order",
     "CartItem",
     "User",
+    "Only",
+    "ShopItem",
+    "ShopPage",
+    "ShopPicture",
+    "ShopSection",
+    "ShopSuggestion",
     "UnboxAIClient",
     "AsyncUnboxAIClient",
     "ProgressBar",

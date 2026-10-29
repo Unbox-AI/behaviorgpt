@@ -20,6 +20,12 @@ from behaviorgpt.resources.recommendations import AsyncRecommender, Recommender
 from behaviorgpt.resources.requests import UnboxAIRequester
 from behaviorgpt.resources.search import AsyncSearcher, Searcher
 from behaviorgpt.resources.sections import AsyncSectioner, Sectioner, sections_body
+from behaviorgpt.resources.shop import (
+    DEFAULT_PORTAL_URL,
+    AsyncShop,
+    Shop,
+    shop_http_options,
+)
 from behaviorgpt.types import (
     AddItemsJobDetails,
     AddKeywordsJobDetails,
@@ -114,6 +120,7 @@ class _BaseClient:
         api_key: Optional[str] = None,
         base_url: str = DEFAULT_BASE_URL,
         default_catalog_id: Optional[str] = None,
+        portal_url: Optional[str] = None,
     ):
         self.api_key = api_key or os.environ.get("UNBOXAI_API_KEY")
         if not self.api_key:
@@ -121,6 +128,10 @@ class _BaseClient:
             raise AuthenticationError(msg)
 
         self.base_url = base_url
+        # where `shop` calls: the portal, whose shopping calls the widgets make too
+        self.portal_url = (
+            portal_url or os.environ.get("UNBOXAI_PORTAL_URL") or DEFAULT_PORTAL_URL
+        )
         # the catalog of calls that name none
         self.default_catalog_id = (
             default_catalog_id
@@ -427,6 +438,7 @@ class UnboxAIClient(_BaseClient):
         base_url: str = DEFAULT_BASE_URL,
         default_catalog_id: Optional[str] = None,
         http_timeout: float | httpx.Timeout = DEFAULT_HTTP_TIMEOUT,
+        portal_url: Optional[str] = None,
     ):
         super().__init__(
             market,
@@ -434,6 +446,7 @@ class UnboxAIClient(_BaseClient):
             api_key=api_key,
             base_url=base_url,
             default_catalog_id=default_catalog_id,
+            portal_url=portal_url,
         )
 
         headers = {"x-api-key": self.api_key}
@@ -446,6 +459,12 @@ class UnboxAIClient(_BaseClient):
         self.catalogs = Catalogs(self._http_client)
         self.events = Events(self._http_client, self)
         self._sections = Sectioner(self._http_client)
+        assert self.api_key is not None
+        self._shop_client = httpx.Client(
+            **shop_http_options(self.api_key, self.portal_url)
+        )
+        # search, shelves and the rest as the portal's widgets show them
+        self.shop = Shop(self._shop_client, self)
 
     def complete(
         self,
@@ -878,6 +897,7 @@ class AsyncUnboxAIClient(_BaseClient):
         base_url: str = DEFAULT_BASE_URL,
         default_catalog_id: Optional[str] = None,
         http_timeout: float | httpx.Timeout = DEFAULT_HTTP_TIMEOUT,
+        portal_url: Optional[str] = None,
     ):
         super().__init__(
             market,
@@ -885,6 +905,7 @@ class AsyncUnboxAIClient(_BaseClient):
             api_key=api_key,
             base_url=base_url,
             default_catalog_id=default_catalog_id,
+            portal_url=portal_url,
         )
 
         headers = {"x-api-key": self.api_key}
@@ -897,6 +918,12 @@ class AsyncUnboxAIClient(_BaseClient):
         self.catalogs = AsyncCatalogs(self._http_client)
         self.events = AsyncEvents(self._http_client, self)
         self._sections = AsyncSectioner(self._http_client)
+        assert self.api_key is not None
+        self._shop_client = httpx.AsyncClient(
+            **shop_http_options(self.api_key, self.portal_url)
+        )
+        # search, shelves and the rest as the portal's widgets show them
+        self.shop = AsyncShop(self._shop_client, self)
 
     async def __aenter__(self) -> "AsyncUnboxAIClient":
         return self
@@ -906,6 +933,7 @@ class AsyncUnboxAIClient(_BaseClient):
 
     async def aclose(self) -> None:
         await self._http_client.aclose()
+        await self._shop_client.aclose()
 
     async def complete(
         self,

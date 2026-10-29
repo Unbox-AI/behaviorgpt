@@ -132,6 +132,35 @@ Each suggestion has its `text`, the `item` it came from, and its `source`: `"key
 
 When a few letters after earlier searches read as more of the same ("gl" after "golf clubs" ranks golf clubs), and too few of those items continue the text, the rest of the suggestions come from a second ranking of the text alone.
 
+## Search and shelves, as a shop shows them
+
+`client.shop` answers what a shop page shows, from the same code as the portal's widgets, so a shelf is the same on your site, in your app and from your server. `complete` gives you the raw ranking; these give you finished cards:
+
+```python
+from behaviorgpt import Only, Search, UnboxAIClient, View
+
+client = UnboxAIClient(market="us", default_catalog_id="cat_...")
+
+client.shop.suggest("lin", user_id=uid)                       # searches to offer as they type
+page = client.shop.search("linen sofa", user_id=uid, limit=24)
+page.items, page.more                                         # cards, and whether a next page exists
+client.shop.browse(Only(categories=["Sofas"], max_price=900))  # a category page
+client.shop.recommend("for_you", user_id=uid)                 # for the shopper
+client.shop.recommend("similar", item="sku-123")              # more like this
+client.shop.recommend("bought_together", item="sku-123")      # one of each kind, named in `tag`
+client.shop.recommend("cart", items=["sku-1", "sku-9"])       # what goes with a cart
+client.shop.recommend("after_purchase", items=["sku-1"], user_id=uid)  # the order confirmation
+client.shop.sections(user_id=uid)                             # titled shelves: "Linen sofas", ...
+client.shop.item("sku-123").keywords                          # an item with its search terms
+client.shop.visual("chair.jpg")                               # products that look like a picture
+```
+
+An item is a `ShopItem`: `id`, `name`, `brand`, `image`, `price`, `currency` and `url` (its page, from the catalog or the tracking script). No shelf shows what the shopper already viewed or bought, or the same product twice. `only` keeps any call to categories, brands or a price range.
+
+Every call takes `user_id`, a shopper whose events you record ([events](#events), the tracking script's `unbox_uid`, or an app's tracker): their recorded searches and views come first. `history` adds what they did that is not recorded yet, as `Search` and `View` events, and `user` says who they are. Nothing a shop call asks is recorded. `visual` takes a file's path, its bytes, a `data:` URL or a link, and waits while BehaviorGPT reads a new picture (`on_progress` hears what it is doing).
+
+The calls go to the portal (`https://portal.unboxai.com/api/v1/shop/`) with your API key; `portal_url=` or `UNBOXAI_PORTAL_URL` points them elsewhere. Any language can make them: [the calls' OpenAPI description](https://portal.unboxai.com/api/v1/shop/openapi.json). On a page or in an app, where your API key must never go, the [widgets](https://portal.unboxai.com/widgets/README.md) make the same calls with a publishable key.
+
 ## Your own catalog
 
 The model can only return items it knows about. Out of the box the client uses `retail_catalog`, a sample retail catalog. To use the model on your own data, upload your catalog as a parquet file. A catalog doesn't have to be products for sale: artworks, articles, listings or anything else people browse and pick from work the same way.
