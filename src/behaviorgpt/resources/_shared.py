@@ -16,7 +16,11 @@ def as_request(payload: Union[UnboxAIRequest, dict]) -> UnboxAIRequest:
 
 
 def request_body(payload: UnboxAIRequest) -> dict:
-    return payload.model_dump(mode="json", exclude_none=True)
+    body = payload.model_dump(mode="json", exclude_none=True)
+    # the API takes a user_id or a history, and refuses both, even empty
+    if payload.user_id is not None:
+        body.pop("history", None)
+    return body
 
 
 def ranked_response(payload: UnboxAIRequest, data: dict) -> UnboxAIResponse:

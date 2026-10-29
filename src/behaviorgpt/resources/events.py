@@ -1,16 +1,17 @@
 from datetime import UTC, datetime
-from typing import Optional, Protocol, Sequence
+from typing import List, Optional, Protocol, Sequence
 from uuid import uuid4
 
 import httpx
 
 from behaviorgpt.resources._shared import handle_response
 from behaviorgpt.types import Domains, Order, UserEvent
-from behaviorgpt.types.http import TrackedEvent
+from behaviorgpt.types.http import RecordedCall, TrackedEvent
 from behaviorgpt.types.user import User
 
 PATH = "/events"
 OWN_PATH = "/events/own"
+CALLS_PATH = "/events/own/calls"
 # the server's limit
 MAX_LISTED = 200
 
@@ -96,9 +97,27 @@ def tracked_events(data: dict) -> list[TrackedEvent]:
     return [TrackedEvent(**entry) for entry in data["events"]]
 
 
+def calls_params(
+    user_id: Optional[str], limit: int, calls: Optional[Sequence[str]]
+) -> list[tuple[str, str]]:
+    if not 1 <= limit <= MAX_LISTED:
+        raise ValueError(f"limit must be between 1 and {MAX_LISTED}, got {limit}")
+    params: list[tuple[str, str]] = [("limit", str(limit))]
+    if user_id is not None:
+        params.append(("user_id", user_id))
+    params.extend(("call", c) for c in calls or ())
+    return params
+
+
+def recorded_calls(data: dict) -> list[RecordedCall]:
+    return [RecordedCall(**entry) for entry in data["calls"]]
+
+
 class Events:
     """Your users' events. Record them with `track`; `complete(user_id=...)`
-    and `sections(user_id=...)` then read them as that user's history."""
+    and `sections(user_id=...)` then read them as that user's history, and
+    record what they ran for them: a search as their event, the rest in
+    `calls`."""
 
     def __init__(self, http_client: httpx.Client, context: EventContext):
         self._client = http_client
@@ -147,6 +166,23 @@ class Events:
         response = self._client.get(OWN_PATH, params=params)
         return tracked_events(handle_response(response))
 
+    def calls(
+        self,
+        *,
+        user_id: Optional[str] = None,
+        limit: int = 50,
+        calls: Optional[Sequence[str]] = None,
+    ) -> List[RecordedCall]:
+        """The calls made for your users, newest first: all of them, or
+        `user_id`'s. Each `complete`, `sections` and `autocomplete` with a
+        `user_id` is recorded with what it was for and the items it showed,
+        kept 28 days; histories never read them. `calls` keeps only those
+        calls, such as `["search", "autocomplete"]`. `limit` can be at most
+        200."""
+        params = calls_params(user_id, limit, calls)
+        response = self._client.get(CALLS_PATH, params=params)
+        return recorded_calls(handle_response(response))
+
 
 class AsyncEvents:
     """`Events` for `AsyncUnboxAIClient`."""
@@ -187,3 +223,15 @@ class AsyncEvents:
         params = list_params(user_id, limit, types, stream)
         response = await self._client.get(OWN_PATH, params=params)
         return tracked_events(handle_response(response))
+
+    async def calls(
+        self,
+        *,
+        user_id: Optional[str] = None,
+        limit: int = 50,
+        calls: Optional[Sequence[str]] = None,
+    ) -> List[RecordedCall]:
+        """See `Events.calls`."""
+        params = calls_params(user_id, limit, calls)
+        response = await self._client.get(CALLS_PATH, params=params)
+        return recorded_calls(handle_response(response))

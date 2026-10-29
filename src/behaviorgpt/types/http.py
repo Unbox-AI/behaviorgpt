@@ -54,8 +54,9 @@ class UnboxAIRequest(BaseModel):
     query: Optional[str] = Field(default=None)
 
     history: List[SessionEvent] = Field(default_factory=list)
-    # The API adds the events it has stored for this id (sent from a site's
-    # script or POST /events) to `history`.
+    # The API reads the events it has stored for this id (sent from a site's
+    # script or POST /events) as the history, so `history` is then left empty
+    # and not sent.
     user_id: Optional[str] = Field(default=None, min_length=1, max_length=512)
     store_id: str
     domains: Domains
@@ -78,6 +79,12 @@ class UnboxAIRequest(BaseModel):
     # The item fields each result's `data` holds; unset, all of them.
     # `top_terms` is returned only when named here.
     fields_to_include: Optional[List[str]] = None
+    # With a user_id: False keeps the API from recording what this call showed
+    # for them (`events.calls`). Unset, it records it.
+    record_call: Optional[bool] = None
+    # The name the call is recorded under, such as "autocomplete"; unset, the
+    # endpoint's.
+    call: Optional[str] = None
 
     @field_validator("timestamp")
     @classmethod
@@ -92,15 +99,53 @@ class UnboxAIRequest(BaseModel):
             raise ValueError("Offset + limit cannot exceed 10,000")
         return self
 
+    @model_validator(mode="after")
+    def validate_user_id_or_history(self) -> "UnboxAIRequest":
+        if self.user_id is not None and self.history:
+            raise ValueError(
+                "pass a user_id or a history, not both: with a user_id the API "
+                "reads the history it has stored for them"
+            )
+        return self
+
 
 class TrackedEvent(BaseModel):
     """An event as the API stored it: `event` is as the API stores it, and
-    `stream` is where it came from (a publishable key, "api", an import)."""
+    `stream` is where it came from (a publishable key, "api", an import).
+    `via` names the call that recorded it, such as "search" for the search a
+    `complete(user_id=...)` ran; None for an event sent as one."""
 
     user_id: str
     timestamp: datetime
     event: dict
     store_id: Optional[str] = None
+    stream: Optional[str] = None
+    via: Optional[str] = None
+
+
+class ShownItem(BaseModel):
+    """An item a recorded call showed, and the catalog it is in."""
+
+    id: str
+    catalog_id: str = Field(validation_alias=AliasChoices("catalog_id", "store_id"))
+
+
+class RecordedCall(BaseModel):
+    """A call made for a user, as the API recorded it: `call` is "search",
+    "recommendations", "sections" or a name it gave itself, such as
+    "autocomplete"; `query` the search, `type` what recommendations predicted
+    (such as "buy_next"), `items` the first 20 it showed, and `sections` the
+    titles a sections call showed."""
+
+    user_id: str
+    timestamp: datetime
+    call: str
+    catalog_id: str = Field(validation_alias=AliasChoices("catalog_id", "store_id"))
+    query: Optional[str] = None
+    type: Optional[str] = None
+    offset: int = 0
+    items: List[ShownItem] = Field(default_factory=list)
+    sections: Optional[List[str]] = None
     stream: Optional[str] = None
 
 

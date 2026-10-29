@@ -100,7 +100,9 @@ res = client.complete([View("paB08NYK61PJ")], user=shopper)
 
 `user=` works with `complete` and `sections`, on the async client too, and applies to the prediction and to every event of the history. Set the time zone: the default is UTC, and the hour and weekday the model reads are then UTC's, not the shopper's. Values outside the lists above raise an error rather than being sent. A raw age never leaves your server, only its group, and postal codes are not sent.
 
-If your site already sends events (the portal's browser script, or `POST /events`), pass the person's id instead of a history: `client.complete(user_id=uid, user=shopper)`. The API adds the events it has stored for that id to whatever `history` you pass. With the browser script, the id is in the `unbox_uid` cookie.
+If your site already sends events (the portal's browser script, or `POST /events`), pass the person's id instead of a history: `client.complete(user_id=uid, user=shopper)`. The API ranks on the events it has stored for that id, so pass no history, or only the `Search(...)` to run: `client.complete([Search("sofa")], user_id=uid)`. With the browser script, the id is in the `unbox_uid` cookie.
+
+A call with a `user_id` is recorded for that person, so it shows in their events in the portal. Its search is stored as their event, marked `via="search"` (or `"sections"`) so it isn't mistaken for one your site sent; the same search sent by your site within a minute is kept once. The call itself, what it was for and the items it showed, is kept apart and never becomes part of their history: `client.events.calls(user_id=uid)` lists them. Pass `register_event=False` to record nothing, for example for a ranking your own staff look at.
 
 From your server, record events with `client.events.track`, and read back what your account has stored with `client.events.list`, newest first:
 
@@ -126,7 +128,7 @@ client.autocomplete("gl", [Search("winter jacket")]).texts
 # ['gloves', 'mens gloves', 'winter gloves', ...]
 ```
 
-Each suggestion has its `text`, the `item` it came from, and its `source`: `"keyword"`, or `"name"` for an item without keywords, which offers its name instead (`add_keywords` generates them, see [your own catalog](#your-own-catalog)). Nothing is recorded, so call it on each keystroke (after a short pause, about 150 ms, and cancel the previous call), and call `complete` with `Search(...)` once the person searches. Empty text suggests what comes after the history. It takes `catalog_id`, `catalog_ids`, `user` and `user_id` as `complete` does; `limit` is at most 20.
+Each suggestion has its `text`, the `item` it came from, and its `source`: `"keyword"`, or `"name"` for an item without keywords, which offers its name instead (`add_keywords` generates them, see [your own catalog](#your-own-catalog)). With a `user_id` it is recorded only as an `"autocomplete"` call, never as a search, so call it on each keystroke (after a short pause, about 150 ms, and cancel the previous call), and call `complete` with `Search(...)` once the person searches. Empty text suggests what comes after the history. It takes `catalog_id`, `catalog_ids`, `user` and `user_id` as `complete` does; `limit` is at most 20.
 
 When a few letters after earlier searches read as more of the same ("gl" after "golf clubs" ranks golf clubs), and too few of those items continue the text, the rest of the suggestions come from a second ranking of the text alone.
 

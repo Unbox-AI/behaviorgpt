@@ -25,9 +25,11 @@ from behaviorgpt.types.http import (
     ItemsPage,
     ItemsRejected,
     JobStatus,
+    RecordedCall,
     RejectedItem,
     Section,
     SectionsResponse,
+    ShownItem,
     SimilarItemsRequest,
     Suggestion,
     TrackedEvent,
@@ -68,6 +70,8 @@ __all__ = [
     "Suggestion",
     "AutocompleteResponse",
     "TrackedEvent",
+    "RecordedCall",
+    "ShownItem",
 ]
 
 
