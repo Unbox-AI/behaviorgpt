@@ -4,9 +4,9 @@
 
 BehaviorGPT is Unbox AI's Large Behavioral Model. It is trained on long sequences of things people actually did (viewed this, added that, bought the other) and predicts what comes next, so search, recommendations and personalization are the same call with different histories. BehaviorGPT-v4 is a single 12.5B-parameter model pretrained on 150 billion user actions across retail, engagement and payments, and it ranks catalogs it has never seen with no training.
 
-[Website](https://unboxai.com/behaviorgpt) · [Live demo](https://behaviorgpt.unboxai.com/) · [Research](https://research.unboxai.com) · [Notebook](https://github.com/Unbox-AI/behaviorgpt/blob/main/notebooks/showcase.ipynb)
+[Website](https://unboxai.com/behaviorgpt) · [Live demo](https://behaviorgpt.unboxai.com/) · [Research](https://research.unboxai.com) · [Notebook](https://github.com/Unbox-AI/behaviorgpt/blob/main/notebooks/showcase.ipynb) · [Reproduce the paper](https://github.com/Unbox-AI/behaviorgpt-reproduce)
 
-This repository holds the Python SDK for the Unbox AI API and a notebook that walks through the model step by step.
+This repository holds the Python SDK for the Unbox AI API and a notebook that walks through the model step by step. The notebook that reproduces the paper's zero-shot PixelRec evaluation through this SDK is in [behaviorgpt-reproduce](https://github.com/Unbox-AI/behaviorgpt-reproduce).
 
 Three apps built on this SDK: two that recommend, on a store's catalog and a museum's, and one that reads the same rankings as a fraud detector.
 
@@ -231,6 +231,8 @@ uv run jupyter lab
 ```
 
 JupyterLab opens in your browser. Open the notebook and pick the `behaviorgpt-env` kernel.
+
+To reproduce the paper's zero-shot PixelRec evaluation through the API, see [behaviorgpt-reproduce](https://github.com/Unbox-AI/behaviorgpt-reproduce).
 
 ## Async
 
