@@ -2,9 +2,9 @@
 
 **The foundation model for behavior.**
 
-BehaviorGPT is Unbox AI's Large Behavioral Model. It is trained on long sequences of things people actually did (viewed this, added that, bought the other) and predicts what comes next, so search, recommendations and personalization are the same call with different histories. BehaviorGPT-v4 is a single 12.5B-parameter model pretrained on 150 billion user actions across retail, engagement and payments, and it ranks catalogs it has never seen with no training.
+BehaviorGPT is Unbox AI's Large Behavioral Model. It is trained on long sequences of things people actually did (viewed this, searched for that, chose the other) and predicts what comes next, so search, recommendations and personalization are the same call with different histories. BehaviorGPT-v4 is a single 12.5B-parameter model pretrained on 150 billion user actions across retail, engagement and payments, and it ranks catalogs it has never seen with no training.
 
-[Website](https://unboxai.com/behaviorgpt) · [Live demo](https://behaviorgpt.unboxai.com/) · [Research](https://research.unboxai.com) · [Notebook](https://github.com/Unbox-AI/behaviorgpt/blob/main/notebooks/showcase.ipynb) · [Reproduce the paper](https://github.com/Unbox-AI/behaviorgpt-reproduce)
+[Website](https://unboxai.com/behaviorgpt) · [Live demo](https://behaviorgpt.unboxai.com/) · [Research](https://research.unboxai.com) · [Notebook](https://github.com/Unbox-AI/behaviorgpt/blob/main/notebooks/showcase.ipynb) · [Reproduce the paper](https://github.com/Unbox-AI/behaviorgpt-reproduce) · [For LLMs and coding agents](https://portal.unboxai.com/llms.txt)
 
 This repository holds the Python SDK for the Unbox AI API and a notebook that walks through the model step by step. The notebook that reproduces the paper's zero-shot PixelRec evaluation through this SDK is in [behaviorgpt-reproduce](https://github.com/Unbox-AI/behaviorgpt-reproduce).
 
@@ -25,7 +25,7 @@ Three apps built on this SDK: two that recommend, on a store's catalog and a mus
 
 ## Requirements
 
-- An Unbox AI API key. Create and copy the key at [unboxai.com/behaviorgpt](https://unboxai.com/behaviorgpt); the key also arrives by email.
+- An Unbox AI API key, free: sign in with your email at [portal.unboxai.com](https://portal.unboxai.com).
 - Python 3.11 or newer.
 
 ## Quick start
@@ -57,7 +57,7 @@ print(client.similar_items(res.items[0].id).names)
 ## How it works
 
 - **One call, many features.** Every request asks the same question: given what this person did, which items are they most likely to act on next? The history picks the feature. End it with a `Search` for search results, with a `View` for "more like this", with an `Order` for what they want after buying; leave it empty for a cold start.
-- **The whole sequence counts.** The model reads the history in order, so the same query means different things after different actions: "gloves" after "golf clubs" returns golf gloves. Who the person is and when they act count too ([who the shopper is](#who-the-shopper-is)), which helps most when the history is short.
+- **The whole sequence counts.** The model reads the history in order, so the same query means different things after different actions: "gloves" after "golf clubs" returns golf gloves. Who the person is and when they act count too ([who the user is](#who-the-user-is)), which helps most when the history is short.
 - **Items are read from their content, not their ids.** Each item is embedded from its name, brand, categories, image and price. That is why the model can rank a catalog it has never seen as soon as it is uploaded, with no interaction data and no training, and why those columns decide how well it does ([catalog format](https://github.com/Unbox-AI/behaviorgpt/blob/main/docs/catalog-format.md)).
 - **One pass per request.** Item vectors are computed once when the catalog is embedded, so ranking the whole catalog costs one forward pass over the history rather than one per item: the model itself takes under a millisecond per query, and most of an API call's time is the network.
 
@@ -79,7 +79,7 @@ client.complete([View(shoe)], predict="purchase")  # bought together
 client.complete([View(shoe), Order([shoe])])       # what they want after buying it
 ```
 
-## Who the shopper is
+## Who the user is
 
 Besides what the person did, BehaviorGPT reads who they are and when they act. Everything here is optional: what you leave out is unknown, and the model works without it.
 
@@ -94,20 +94,20 @@ Besides what the person did, BehaviorGPT reads who they are and when they act. E
 from behaviorgpt import UnboxAIClient, User, View
 
 client = UnboxAIClient(market="SE", timezone="Europe/Stockholm")
-shopper = User(gender="female", age=34)
-res = client.complete([View("paB08NYK61PJ")], user=shopper)
+person = User(gender="female", age=34)
+res = client.complete([View("paB08NYK61PJ")], user=person)
 ```
 
-`user=` works with `complete` and `sections`, on the async client too, and applies to the prediction and to every event of the history. Set the time zone: the default is UTC, and the hour and weekday the model reads are then UTC's, not the shopper's. Values outside the lists above raise an error rather than being sent. A raw age never leaves your server, only its group, and postal codes are not sent.
+`user=` works with `complete` and `sections`, on the async client too, and applies to the prediction and to every event of the history. Set the time zone: the default is UTC, and the hour and weekday the model reads are then UTC's, not the person's. Values outside the lists above raise an error rather than being sent. A raw age never leaves your server, only its group, and postal codes are not sent.
 
-If your site already sends events (the portal's browser script, or `POST /events`), pass the person's id instead of a history: `client.complete(user_id=uid, user=shopper)`. The API ranks on the events it has stored for that id, so pass no history, or only the `Search(...)` to run: `client.complete([Search("sofa")], user_id=uid)`. With the browser script, the id is in the `unbox_uid` cookie.
+If your site already sends events (the portal's browser script, or `POST /events`), pass the person's id instead of a history: `client.complete(user_id=uid, user=person)`. The API ranks on the events it has stored for that id, so pass no history, or only the `Search(...)` to run: `client.complete([Search("sofa")], user_id=uid)`. With the browser script, the id is in the `unbox_uid` cookie.
 
 A call with a `user_id` is recorded for that person, so it shows in their events in the portal. Its search is stored as their event, marked `via="search"` (or `"sections"`) so it isn't mistaken for one your site sent; the same search sent by your site within a minute is kept once. The call itself, what it was for and the items it showed, is kept apart and never becomes part of their history: `client.events.calls(user_id=uid)` lists them. Pass `register_event=False` to record nothing, for example for a ranking your own staff look at.
 
 From your server, record events with `client.events.track`, and read back what your account has stored with `client.events.list`, newest first:
 
 ```python
-client.events.track(uid, View(shoe), user=shopper)
+client.events.track(uid, View(shoe), user=person)
 client.events.track(uid, Order([shoe]), timestamp=paid_at)  # sent later than it happened
 
 client.events.list(user_id=uid, limit=20)
@@ -145,19 +145,19 @@ client.shop.suggest("lin", user_id=uid)                       # searches to offe
 page = client.shop.search("linen sofa", user_id=uid, limit=24)
 page.items, page.more                                         # cards, and whether a next page exists
 client.shop.browse(Only(categories=["Sofas"], max_price=900))  # a category page
-client.shop.recommend("for_you", user_id=uid)                 # for the shopper
+client.shop.recommend("for_you", user_id=uid)                 # for this user
 client.shop.recommend("similar", item="sku-123")              # more like this
 client.shop.recommend("bought_together", item="sku-123")      # one of each kind, named in `tag`
 client.shop.recommend("cart", items=["sku-1", "sku-9"])       # what goes with a cart
 client.shop.recommend("after_purchase", items=["sku-1"], user_id=uid)  # the order confirmation
 client.shop.sections(user_id=uid)                             # titled shelves: "Linen sofas", ...
 client.shop.item("sku-123").keywords                          # an item with its search terms
-client.shop.visual("chair.jpg")                               # products that look like a picture
+client.shop.visual("chair.jpg")                               # items that look like a picture
 ```
 
-An item is a `ShopItem`: `id`, `name`, `brand`, `image`, `price`, `currency` and `url` (its page, from the catalog or the tracking script). No shelf shows what the shopper already viewed or bought, or the same product twice. `only` keeps any call to categories, brands or a price range.
+An item is a `ShopItem`: `id`, `name`, `brand`, `image`, `price`, `currency` and `url` (its page, from the catalog or the tracking script). No shelf shows what the user already viewed or ordered, or the same item twice. `only` keeps any call to categories, brands or a price range.
 
-Every call takes `user_id`, a shopper whose events you record ([events](#events), the tracking script's `unbox_uid`, or an app's tracker): their recorded searches and views come first. `history` adds what they did that is not recorded yet, as `Search` and `View` events, and `user` says who they are. Nothing a shop call asks is recorded. `visual` takes a file's path, its bytes, a `data:` URL or a link, and waits while BehaviorGPT reads a new picture (`on_progress` hears what it is doing).
+Every call takes `user_id`, a user whose events you record ([events](#events), the tracking script's `unbox_uid`, or an app's tracker): their recorded searches and views come first. `history` adds what they did that is not recorded yet, as `Search` and `View` events, and `user` says who they are. Nothing a shop call asks is recorded. `visual` takes a file's path, its bytes, a `data:` URL or a link, and waits while BehaviorGPT reads a new picture (`on_progress` hears what it is doing).
 
 The calls go to the portal (`https://portal.unboxai.com/api/v1/shop/`) with your API key; `portal_url=` or `UNBOXAI_PORTAL_URL` points them elsewhere. Any language can make them: [the calls' OpenAPI description](https://portal.unboxai.com/api/v1/shop/openapi.json). On a page or in an app, where your API key must never go, the [widgets](https://portal.unboxai.com/widgets/README.md) make the same calls with a publishable key.
 
