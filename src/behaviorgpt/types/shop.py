@@ -52,7 +52,7 @@ class ShopSuggestion(BaseModel):
     # one of a ranked item's keywords ("keyword"), or its name made a phrase ("name")
     source: str
     # the item that offered it
-    item: str
+    item_id: str
 
 
 class ShopPage(BaseModel):
