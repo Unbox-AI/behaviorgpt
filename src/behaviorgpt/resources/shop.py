@@ -3,7 +3,7 @@
     client = UnboxAIClient(market="us", default_catalog_id="cat_...")
     client.shop.suggest("lin", user_id=uid)
     client.shop.search("linen sofa", user_id=uid, only=Only(max_price=900))
-    client.shop.recommend("bought_together", item="sku-123")
+    client.shop.recommend("bought_together", item_id="sku-123")
 
 `complete()` ranks a catalog for a history and answers raw items; these answer
 what a shop shows, from the same code as the widgets on a page and in an app:
@@ -30,7 +30,7 @@ from typing import TYPE_CHECKING, Any, Callable, Optional, Sequence, Union
 import httpx
 
 from behaviorgpt.resources._shared import handle_response
-from behaviorgpt.types.events import Search, View
+from behaviorgpt.types.events import Order, Search, View
 from behaviorgpt.types.shop import (
     Only,
     PictureKind,
@@ -57,7 +57,7 @@ PICTURE_POLL = 1.5
 PICTURE_WAIT = 180.0
 
 Picture = Union[str, Path, bytes]
-History = Sequence[Union[Search, View]]
+History = Sequence[Union[Search, View, Order]]
 
 
 def shop_http_options(api_key: str, portal_url: str) -> dict[str, Any]:
@@ -69,14 +69,15 @@ def shop_http_options(api_key: str, portal_url: str) -> dict[str, Any]:
     }
 
 
-def _event(event: Union[Search, View]) -> dict:
+def _event(event: Union[Search, View, Order]) -> dict:
     if isinstance(event, Search):
         return {"type": "search", "query": event.query}
     if isinstance(event, View):
-        return {"type": "view", "item": event.item}
+        return {"type": "view", "item_id": event.item}
+    if isinstance(event, Order):
+        return {"type": "order", "item_ids": [i.item for i in event.items]}
     raise TypeError(
-        f"history takes Search and View events, not {type(event).__name__}: "
-        "for what goes with an order use recommend('after_purchase', items=...)"
+        f"history takes Search, View and Order events, not {type(event).__name__}"
     )
 
 
@@ -110,13 +111,14 @@ def shop_body(
     user: Optional[User],
     **fields: Any,
 ) -> dict:
-    """A call's JSON: the catalog, the shopper, and `fields` without the unset."""
+    """A call's JSON, with the SDK's names (as the portal takes them): the
+    catalog, the shopper, and `fields` without the unset."""
     body: dict[str, Any] = {
-        "catalog": catalog_id or context.default_catalog_id,
-        "who": _who(context, user),
+        "catalog_id": catalog_id or context.default_catalog_id,
+        "user": _who(context, user),
     }
     if user_id is not None:
-        body["user"] = str(user_id)
+        body["user_id"] = str(user_id)
     events = [_event(e) for e in history][-MAX_HISTORY:]
     if events:
         body["history"] = events
@@ -269,8 +271,8 @@ class Shop:
         self,
         kind: ShelfKind = "for_you",
         *,
-        item: Optional[str] = None,
-        items: Optional[Sequence[str]] = None,
+        item_id: Optional[str] = None,
+        item_ids: Optional[Sequence[str]] = None,
         limit: int = 8,
         only: Optional[Only] = None,
         user_id: Optional[str] = None,
@@ -279,11 +281,12 @@ class Shop:
         catalog_id: Optional[str] = None,
     ) -> list[ShopItem]:
         """A shelf. `for_you`: what the shopper likely wants next. `similar`:
-        what people view after `item`. `bought_together`: what goes in the same
-        purchase as `item`, one product of each kind, each with its kind's name
-        as `tag`. `cart`: what goes with `items`. `after_purchase`: what the
-        shopper wants next now that they bought `items`, one of each kind. No
-        shelf shows what the shopper viewed or bought, or one product twice."""
+        what people view after `item_id`. `bought_together`: what goes in the
+        same purchase as `item_id`, one product of each kind, each with its
+        kind's name as `tag`. `cart`: what goes with `item_ids`.
+        `after_purchase`: what the shopper wants next now that they bought
+        `item_ids`, one of each kind. No shelf shows what the shopper viewed or
+        bought, or one product twice."""
         body = shop_body(
             self._context,
             catalog_id=catalog_id,
@@ -291,8 +294,8 @@ class Shop:
             history=history,
             user=user,
             kind=kind,
-            item=item,
-            items=list(items) if items else None,
+            item_id=item_id,
+            item_ids=list(item_ids) if item_ids else None,
             limit=limit,
             only=_only(only),
         )
@@ -334,7 +337,7 @@ class Shop:
             user_id=None,
             history=(),
             user=None,
-            item=item_id,
+            item_id=item_id,
         )
         return ShopItem(**self._call("item", body)["item"])
 
@@ -476,8 +479,8 @@ class AsyncShop:
         self,
         kind: ShelfKind = "for_you",
         *,
-        item: Optional[str] = None,
-        items: Optional[Sequence[str]] = None,
+        item_id: Optional[str] = None,
+        item_ids: Optional[Sequence[str]] = None,
         limit: int = 8,
         only: Optional[Only] = None,
         user_id: Optional[str] = None,
@@ -493,8 +496,8 @@ class AsyncShop:
             history=history,
             user=user,
             kind=kind,
-            item=item,
-            items=list(items) if items else None,
+            item_id=item_id,
+            item_ids=list(item_ids) if item_ids else None,
             limit=limit,
             only=_only(only),
         )
@@ -536,7 +539,7 @@ class AsyncShop:
             user_id=None,
             history=(),
             user=None,
-            item=item_id,
+            item_id=item_id,
         )
         return ShopItem(**(await self._call("item", body))["item"])
 
