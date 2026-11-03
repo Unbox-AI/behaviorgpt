@@ -1,6 +1,6 @@
 ---
 name: portal-app
-description: Build a web app that opens from the user's Home on portal.unboxai.com ("Add an app") and reads their catalogs with BehaviorGPT. Use when the user wants to make their own app, tool, page or dashboard for the portal, add an app to the portal, or read the catalog, compare or streams parameters a portal launch passes.
+description: Build a web app that opens from the user's Home on portal.unboxai.com ("Add an app") and reads their catalogs with BehaviorGPT. Use when the user wants to make their own app, tool, page or dashboard for the portal, add an app to the portal, or read the catalog_id, compare or streams parameters a portal launch passes.
 ---
 
 # An app that opens from the portal
@@ -15,11 +15,11 @@ The user adds the app with a name, an address, what it does, and which catalogs 
 
 | Parameter | Holds | Missing when |
 |---|---|---|
-| `catalog` | the base catalog id | the app opens on no catalog |
+| `catalog_id` | the base catalog id | the app opens on no catalog |
 | `compare` | up to 4 catalog ids ranked with the base | nothing is compared, or the app opens on one catalog |
 | `streams` | event stream names, as on the portal's Events page | none is selected, which means all of them |
 
-Any other parameters in the address the user saved are kept, so `?view=table` still arrives.
+Any other parameters in the address the user saved are kept, so `?view=table` still arrives. (`catalog_id` was `catalog` before November 2026; the portal no longer sends that name.)
 
 Nothing is signed and no key is sent. So:
 
@@ -37,7 +37,7 @@ from behaviorgpt import Search, UnboxAIClient
 client = UnboxAIClient(market="us")  # reads UNBOXAI_API_KEY
 
 def selection(params) -> list[str]:
-    ids = [params.get("catalog", ""), *params.get("compare", "").split(",")]
+    ids = [params.get("catalog_id", ""), *params.get("compare", "").split(",")]
     return [i for i in ids if i]
 
 res = client.complete([Search("rain jacket")], catalog_ids=selection(params), limit=10)
