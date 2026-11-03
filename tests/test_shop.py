@@ -79,14 +79,14 @@ def test_a_search_goes_to_the_portal_with_the_key_and_the_shopper():
     assert str(request.url) == "https://portal.unboxai.com/api/v1/shop/search"
     assert request.headers["authorization"] == "Bearer ubx_test"
     assert sent(request) == {
-        "catalog": "cat_1",
-        "user": "shopper-42",
+        "catalog_id": "cat_1",
+        "user_id": "shopper-42",
         "history": [
             {"type": "search", "query": "linen"},
-            {"type": "view", "item": "lamp-1"},
+            {"type": "view", "item_id": "lamp-1"},
         ],
         # the client's market and time zone, with who the shopper is
-        "who": {
+        "user": {
             "gender": "female",
             "age_group": "26-35",
             "market": "US",
@@ -105,7 +105,7 @@ def test_each_call_asks_its_own_path_and_reads_its_answer():
         {
             "suggest": {
                 "suggestions": [
-                    {"text": "linen sofa", "source": "keyword", "item": "sofa-1"}
+                    {"text": "linen sofa", "source": "keyword", "item_id": "sofa-1"}
                 ]
             },
             "browse": {"items": [CARD], "offset": 12, "more": False},
@@ -114,24 +114,29 @@ def test_each_call_asks_its_own_path_and_reads_its_answer():
             "item": {"item": {**CARD, "keywords": ["linen sofa"]}},
         },
     )
-    assert client.shop.suggest("lin")[0].text == "linen sofa"
+    suggestion = client.shop.suggest("lin")[0]
+    assert (suggestion.text, suggestion.item_id) == ("linen sofa", "sofa-1")
     assert client.shop.browse(Only(brands=["Nord"]), offset=12).offset == 12
-    shelf = client.shop.recommend("bought_together", item="sofa-1", limit=4)
+    shelf = client.shop.recommend("bought_together", item_id="sofa-1", limit=4)
     assert shelf[0].tag == "Sofas"
     assert client.shop.sections(sections=3)[0].title == "Linen sofas"
     assert client.shop.item("sofa-1", catalog_id="cat_2").keywords == ["linen sofa"]
     bodies = {r.url.path.rsplit("/", 1)[-1]: sent(r) for r in requests}
-    assert bodies["suggest"]["text"] == "lin" and "user" not in bodies["suggest"]
+    assert bodies["suggest"]["text"] == "lin" and "user_id" not in bodies["suggest"]
     assert bodies["browse"]["only"] == {"brands": ["Nord"]}
     assert bodies["recommend"] == {
-        "catalog": "cat_1",
-        "who": {"market": "US", "timezone": "America/New_York"},
+        "catalog_id": "cat_1",
+        "user": {"market": "US", "timezone": "America/New_York"},
         "kind": "bought_together",
-        "item": "sofa-1",
+        "item_id": "sofa-1",
         "limit": 4,
     }
     assert "query" not in bodies["sections"] and bodies["sections"]["sections"] == 3
-    assert bodies["item"]["catalog"] == "cat_2"
+    assert bodies["item"] == {
+        "catalog_id": "cat_2",
+        "user": {"market": "US", "timezone": "America/New_York"},
+        "item_id": "sofa-1",
+    }
 
 
 def test_the_portal_is_another_when_asked(monkeypatch):
@@ -159,10 +164,17 @@ def test_what_is_wrong_comes_back_as_the_sdk_s_errors():
         client.shop.item("sofa-1")
 
 
-def test_history_takes_searches_and_views():
-    client, _ = mock(UnboxAIClient)
-    with pytest.raises(TypeError, match="after_purchase"):
-        client.shop.search("sofa", history=[Order(["sofa-1"])])
+def test_history_takes_searches_views_and_orders():
+    client, requests = mock(
+        UnboxAIClient, {"search": {"items": [], "offset": 0, "more": False}}
+    )
+    client.shop.search("sofa", history=[View("lamp-1"), Order(["sofa-1", "lamp-1"])])
+    assert sent(requests[0])["history"] == [
+        {"type": "view", "item_id": "lamp-1"},
+        {"type": "order", "item_ids": ["sofa-1", "lamp-1"]},
+    ]
+    with pytest.raises(TypeError, match="Search, View and Order"):
+        client.shop.search("sofa", history=["sofa"])  # type: ignore[list-item]
     with pytest.raises(ValueError, match="category"):
         client.shop.browse(Only())
 
@@ -232,10 +244,10 @@ def test_the_async_client_makes_the_same_calls():
             },
         )
         async with client:
-            shelf = await client.shop.recommend("similar", item="sofa-2")
+            shelf = await client.shop.recommend("similar", item_id="sofa-2")
             page = await client.shop.search("sofa", user_id="u")
         assert shelf == [ShopItem(**CARD)] and page.more is False
         assert sent(requests[0])["kind"] == "similar"
-        assert sent(requests[1])["user"] == "u"
+        assert sent(requests[1])["user_id"] == "u"
 
     asyncio.run(run())
