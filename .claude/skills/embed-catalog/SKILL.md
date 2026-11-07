@@ -107,17 +107,11 @@ On failure, `UnboxAIError` carries the server's reason. `client.job_status(job.j
 Run one query and one similarity lookup against the new catalog, and show the top names:
 
 ```python
-res = client.complete(
-    history=[Search("<something in the catalog>")], catalog_id=job.catalog_id, limit=5
-)
+res = client.complete(history=[Search("<something in the catalog>")], catalog_id=job.catalog_id, limit=5)
 print(res.names)
 
 pick = client.random_item(job.catalog_id)
-print(
-    pick.data["name"],
-    "->",
-    client.similar_items(pick.id, catalog_id=job.catalog_id).names[:5],
-)
+print(pick.data["name"], "->", client.similar_items(pick.id, catalog_id=job.catalog_id).names[:5])
 ```
 
 Finish by giving the user the `catalog_id` (private to their API key), and point them to steps 6 to 8 of `notebooks/showcase.ipynb` and the demo at https://behaviorgpt.unboxai.com/ ("Bring your own catalog").

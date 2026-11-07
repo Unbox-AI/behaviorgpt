@@ -116,9 +116,7 @@ Every other column is already a string or an integer and passes through unchange
 ```python
 from behaviorgpt import catalog_from_csv
 
-path = catalog_from_csv(
-    "examples/sample_catalog.csv"
-)  # examples/sample_catalog.parquet
+path = catalog_from_csv("examples/sample_catalog.csv")  # examples/sample_catalog.parquet
 job = client.embed(path, wait=True, timeout=1800.0)
 ```
 
