@@ -5,7 +5,7 @@ import time
 import warnings
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Callable, Optional, Sequence, TextIO
+from typing import Any, Callable, Optional, Sequence, TextIO, Union
 from urllib.parse import quote
 
 import httpx
@@ -26,6 +26,7 @@ from behaviorgpt.types import (
     SimilarItemsRequest,
     UnboxAIResponse,
 )
+from behaviorgpt.types.events import ExternalItem
 from behaviorgpt.types.http import STAGE_LABELS
 
 # The three states the catalogs.status CHECK constraint allows, server-side.
@@ -338,16 +339,22 @@ def catalog_summaries(response: httpx.Response) -> list[CatalogSummary]:
 
 
 def similar_items_body(
-    item_id: str, catalog_id: str, limit: int, offset: int, filters: Optional[dict]
+    item: Union[str, ExternalItem],
+    catalog_id: str,
+    limit: int,
+    offset: int,
+    filters: Optional[dict],
 ) -> dict:
+    """A catalog item is sent by its id, an item in no catalog as `item`."""
     req = SimilarItemsRequest(
-        item_id=item_id,
+        item_id=item if isinstance(item, str) else None,
+        item=item if isinstance(item, ExternalItem) else None,
         store_id=catalog_id,
         limit=limit,
         offset=offset,
         filters=filters or {},
     )
-    return req.model_dump(mode="json")
+    return req.model_dump(mode="json", exclude_none=True)
 
 
 def umap_page(response: httpx.Response) -> str:
@@ -633,7 +640,7 @@ class Catalogs:
 
     def get_similar_items(
         self,
-        item_id: str,
+        item_id: Union[str, ExternalItem],
         limit: int = 10,
         offset: int = 0,
         *,
@@ -811,7 +818,7 @@ class AsyncCatalogs:
 
     async def get_similar_items(
         self,
-        item_id: str,
+        item_id: Union[str, ExternalItem],
         limit: int = 10,
         offset: int = 0,
         *,

@@ -93,6 +93,24 @@ def test_cart_items_can_be_items_in_no_catalog():
     assert Order([photo]).items[0].item == photo
 
 
+def test_similar_items_starts_from_a_picture():
+    client, requests = mock_client(default_catalog_id="a")
+    client.similar_items(ExternalItem(image="https://cdn.example/look.jpg"), limit=5)
+    (request,) = requests
+    assert request.url.path.endswith("/vector/similar_products")
+    body = json.loads(request.content)
+    assert body["item"] == {"image": "https://cdn.example/look.jpg"}
+    assert "product_id" not in body
+    assert body["store_id"] == "a" and body["limit"] == 5
+
+
+def test_similar_items_of_a_catalog_item_is_unchanged():
+    client, requests = mock_client(default_catalog_id="a")
+    client.similar_items("sku-1")
+    body = json.loads(requests[0].content)
+    assert body["product_id"] == "sku-1" and "item" not in body
+
+
 def test_tracked_events_take_catalog_items_only():
     client, requests = mock_client()
     with pytest.raises(ValueError, match="catalog items only"):

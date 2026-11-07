@@ -163,13 +163,14 @@ class _BaseClient:
         item: ItemRef,
         catalog_id: Optional[str],
         catalog_ids: Optional[Sequence[str]],
-    ) -> tuple[_Target, str, str]:
+    ) -> tuple[_Target, Union[str, ExternalItem], str]:
         """The catalogs a similar-items request reads, and the id and catalog
         of its item. The item's catalog is `catalog_id`, else the `Item`'s own;
-        over `catalog_ids` it must be one of them, by default the first."""
-        item_id = item if isinstance(item, str) else item.id
+        over `catalog_ids` it must be one of them, by default the first. An
+        `ExternalItem` is in none and is sent as it is."""
+        item_id = item if isinstance(item, (str, ExternalItem)) else item.id
         item_catalog = catalog_id or (
-            None if isinstance(item, str) else item.catalog_id
+            None if isinstance(item, (str, ExternalItem)) else item.catalog_id
         )
         if catalog_ids is None:
             target = self._target(item_catalog, None)
@@ -797,8 +798,9 @@ class UnboxAIClient(_BaseClient):
         catalog_ids: Optional[Sequence[str]] = None,
         filters: Optional[dict[str, Any]] = None,
     ) -> UnboxAIResponse:
-        """The items most like `item_id`, an item id or an `Item` of a
-        response, most similar first.
+        """The items most like `item_id`, an item id, an `Item` of a response
+        or an `ExternalItem` (an item in no catalog, e.g. a photo: a search by
+        picture), most similar first.
 
         `catalog_id` is the catalog the item is in; for an `Item`, its own.
         `catalog_ids` looks for similar items in several catalogs, the item's

@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     import pandas as pd
 
 from behaviorgpt.types.domains import Domains
-from behaviorgpt.types.events import SessionEvent
+from behaviorgpt.types.events import ExternalItem, SessionEvent
 
 
 class Item(BaseModel):
@@ -264,10 +264,13 @@ class CatalogMap(BaseModel):
 class SimilarItemsRequest(BaseModel):
     model_config = ConfigDict(serialize_by_alias=True)
 
-    item_id: str = Field(
+    # a catalog item by its id, or an item in no catalog (`item`); one of them
+    item_id: Optional[str] = Field(
+        default=None,
         validation_alias=AliasChoices("item_id", "product_id"),
         serialization_alias="product_id",
     )
+    item: Optional[ExternalItem] = None
     # the catalog of the item; the results can come from several
     store_id: str
     limit: int = Field(default=10, ge=1, le=100)
