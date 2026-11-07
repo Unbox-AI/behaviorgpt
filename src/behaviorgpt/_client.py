@@ -7,7 +7,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Callable, Iterable, Literal, Optional, Sequence, cast
+from typing import Any, Callable, Iterable, Literal, Optional, Sequence, Union, cast
 from uuid import uuid4
 
 import httpx
@@ -49,7 +49,7 @@ from behaviorgpt.types import (
     UserHistoryInput,
     View,
 )
-from behaviorgpt.types.events import ItemRef
+from behaviorgpt.types.events import ExternalItem, ItemRef
 from behaviorgpt.types.http import RecommendationType
 from behaviorgpt.types.user import User
 
@@ -356,7 +356,9 @@ class _BaseClient:
         def _process_session_events(
             session_events: Sequence[UserEvent], session_id: str, session_offset: int
         ):
-            cart_state: dict[tuple[Optional[str], str], int] = defaultdict(int)
+            cart_state: dict[tuple[Optional[str], Union[str, ExternalItem]], int] = (
+                defaultdict(int)
+            )
             current_cart_id = str(uuid4())
 
             for i, ev in enumerate(session_events):
@@ -500,6 +502,11 @@ class UnboxAIClient(_BaseClient):
         catalog_id=...)`, or are `Item`s of an earlier response, which know
         theirs. In `filters`, `catalog_id` is the item's catalog, e.g.
         `{"catalog_id": "retail_catalog"}`.
+
+        An item in none of the catalogs goes in the history as an
+        `ExternalItem`, by its name and picture: `View(ExternalItem("Linen
+        shirt", image="shirt.jpg"))`. It is read as a catalog item with that
+        row would be, and is never in the results.
 
         `user` says who the shopper is, `User(gender="female", age=34)`, and
         where, `User(market="SE", timezone="Europe/Stockholm")`: BehaviorGPT

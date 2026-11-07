@@ -6,6 +6,7 @@ from behaviorgpt.types.domains import Domains
 from behaviorgpt.types.events import (
     AddToCart,
     CartItem,
+    ExternalItem,
     Order,
     RemoveFromCart,
     Search,
@@ -65,6 +66,7 @@ __all__ = [
     "Item",
     "ItemsPage",
     "CartItem",
+    "ExternalItem",
     "Section",
     "SectionsResponse",
     "Suggestion",

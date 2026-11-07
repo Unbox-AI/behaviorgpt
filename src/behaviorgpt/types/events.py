@@ -1,23 +1,89 @@
 import warnings
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, List, Literal, Optional, Sequence, Tuple, Union
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, List, Literal, Optional, Sequence, Tuple, Union
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    model_serializer,
+    model_validator,
+)
 
 from behaviorgpt.types.domains import Domains
 
 if TYPE_CHECKING:
     from behaviorgpt.types.http import Item
 
-# an item id, or an `Item` of a response, which knows its catalog
-ItemRef = Union[str, "Item"]
+
+class ExternalItem(BaseModel):
+    """An item in none of your catalogs, by what it is: its name, with its brand
+    and categories as a catalog row has them (see the catalog format), and its
+    picture. It needs a name or a picture. Put it in a history where an item id
+    goes: `View(ExternalItem("Linen shirt", brand="Acme"))`,
+    `Order([ExternalItem(image="photo.jpg")])`. BehaviorGPT reads it as it reads
+    a catalog item with that row; `similar_items(ExternalItem(image=...))` finds
+    the catalog items that look most like a picture.
+
+    `image` is an https link to the picture, or the picture itself: a file's
+    path, its bytes or a data: URL, at most 1024 pixels a side. It is not stored,
+    and the item is in no results."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: Optional[str] = None
+    brand: Optional[str] = None
+    # a comma-separated path, e.g. "Clothing, Shirts"
+    categories: Optional[str] = None
+    # an https link, or a data:image/...;base64, URL
+    image: Optional[str] = None
+
+    def __init__(
+        self,
+        name: Optional[str] = None,
+        *,
+        image: Union[str, bytes, Path, None] = None,
+        **data: Any,
+    ):
+        if name is not None:
+            data["name"] = name
+        if image is not None:
+            data["image"] = _picture(image)
+        super().__init__(**data)
+
+    @model_validator(mode="after")
+    def _something_to_embed(self) -> "ExternalItem":
+        if not self.name and not self.image:
+            raise ValueError("an ExternalItem needs a name or an image")
+        return self
+
+
+def _picture(image: Union[str, bytes, Path]) -> str:
+    """A picture as the API takes it: an https link, or a data: URL of the
+    picture (read from a file's path or bytes)."""
+    from behaviorgpt.resources.shop import picture_source
+
+    source = picture_source(image)
+    if "url" in source:
+        if not source["url"].startswith("https://"):
+            raise ValueError("an ExternalItem's image link must be https")
+        return source["url"]
+    return source["image"]
+
+
+# an item id, an `Item` of a response, which knows its catalog, or an item in
+# none of the catalogs
+ItemRef = Union[str, "Item", ExternalItem]
 
 
 class _ItemEvent(BaseModel):
     # the API calls the item "product"
     model_config = ConfigDict(serialize_by_alias=True)
 
-    item: str = Field(
+    item: Union[str, ExternalItem] = Field(
         validation_alias=AliasChoices("item", "product"),
         serialization_alias="product",
     )
@@ -35,7 +101,7 @@ class _ItemEvent(BaseModel):
             )
             product = data.pop("product")
             item = product if item is None else item
-        if item is not None and not isinstance(item, str):
+        if item is not None and not isinstance(item, (str, ExternalItem)):
             if data.get("catalog_id") is None:
                 data["catalog_id"] = item.catalog_id
             item = item.id
@@ -43,8 +109,18 @@ class _ItemEvent(BaseModel):
             data["item"] = item
         super().__init__(**data)
 
+    @model_serializer(mode="wrap")
+    def _wire(self, handler: SerializerFunctionWrapHandler) -> dict:
+        """An id is sent as `product`; an item in no catalog as `item`."""
+        data = handler(self)
+        if isinstance(self.item, ExternalItem):
+            data.pop("product", None)
+            data.pop("item", None)
+            data["item"] = self.item.model_dump(mode="json", exclude_none=True)
+        return data
+
     @property
-    def product(self) -> str:
+    def product(self) -> Union[str, ExternalItem]:
         warnings.warn(
             "`.product` is deprecated, use `.item`", DeprecationWarning, stacklevel=2
         )
