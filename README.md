@@ -30,6 +30,8 @@ Three apps built on this SDK: two that recommend, on a store's catalog and a mus
 
 ## Quick start
 
+Building with a coding agent such as Claude Code? Point it at [portal.unboxai.com/llms.txt](https://portal.unboxai.com/llms.txt): it lists every way to build with BehaviorGPT and links to this README.
+
 ```sh
 pip install behaviorgpt
 export UNBOXAI_API_KEY=...   # or pass api_key= to UnboxAIClient
