@@ -74,9 +74,9 @@ The names come from a store, but they work for any catalog: map your users' acti
 `complete` predicts what the person looks at next. With `predict="purchase"` it predicts what else goes in the same purchase as the current session's items instead; that needs a history that does not end in a search.
 
 ```python
-client.complete([View(shoe)])                      # others also viewed
+client.complete([View(shoe)])  # others also viewed
 client.complete([View(shoe)], predict="purchase")  # bought together
-client.complete([View(shoe), Order([shoe])])       # what they want after buying it
+client.complete([View(shoe), Order([shoe])])  # what they want after buying it
 ```
 
 ### Items outside your catalogs
@@ -90,8 +90,8 @@ shirt = ExternalItem("Linen shirt", brand="Acme", categories="Clothing, Shirts")
 photo = ExternalItem(image="photo.jpg")  # a path, bytes, a data: URL or an https link
 
 client.complete([View(shirt), Search("trousers")])  # trousers that go with that shirt
-client.complete([View(photo)])                      # what they look at after this picture
-client.similar_items(photo)                         # the catalog items most like the picture
+client.complete([View(photo)])  # what they look at after this picture
+client.similar_items(photo)  # the catalog items most like the picture
 ```
 
 A picture is sent with the request, at most 1024 pixels a side; a link must be https and public, and is downloaded when the item is first read. Nothing is stored, and an `ExternalItem` is never in the results. A history that names one goes with a request (`complete`, `sections`, `similar_items`): `events.track` and the shop's calls take catalog items only.
@@ -125,10 +125,14 @@ From your server, record events with `client.events.track`, and read back what y
 
 ```python
 client.events.track(uid, View(shoe), user=person)
-client.events.track(uid, Order([shoe]), timestamp=paid_at)  # sent later than it happened
+client.events.track(
+    uid, Order([shoe]), timestamp=paid_at
+)  # sent later than it happened
 
 client.events.list(user_id=uid, limit=20)
-client.events.list(stream="api", types=["order"])  # what your server sent; a stream is also a publishable key or an import
+client.events.list(
+    stream="api", types=["order"]
+)  # what your server sent; a stream is also a publishable key or an import
 ```
 
 An event's catalog is `catalog_id=`, else the one an `Item` of a response names, else the client's default. Pass `timestamp=` whenever you send an event after it happened, so the history stays in order.
@@ -158,18 +162,22 @@ from behaviorgpt import Only, Search, UnboxAIClient, View
 
 client = UnboxAIClient(market="us", default_catalog_id="cat_...")
 
-client.shop.suggest("lin", user_id=uid)                       # searches to offer as they type
+client.shop.suggest("lin", user_id=uid)  # searches to offer as they type
 page = client.shop.search("linen sofa", user_id=uid, limit=24)
-page.items, page.more                                         # cards, and whether a next page exists
+page.items, page.more  # cards, and whether a next page exists
 client.shop.browse(Only(categories=["Sofas"], max_price=900))  # a category page
-client.shop.recommend("for_you", user_id=uid)                 # for this user
-client.shop.recommend("similar", item_id="sku-123")           # more like this
-client.shop.recommend("bought_together", item_id="sku-123")   # one of each kind, named in `tag`
-client.shop.recommend("cart", item_ids=["sku-1", "sku-9"])    # what goes with a cart
-client.shop.recommend("after_purchase", item_ids=["sku-1"], user_id=uid)  # the order confirmation
-client.shop.sections(user_id=uid)                             # titled shelves: "Linen sofas", ...
-client.shop.item("sku-123").keywords                          # an item with its search terms
-client.shop.visual("chair.jpg")                               # items that look like a picture
+client.shop.recommend("for_you", user_id=uid)  # for this user
+client.shop.recommend("similar", item_id="sku-123")  # more like this
+client.shop.recommend(
+    "bought_together", item_id="sku-123"
+)  # one of each kind, named in `tag`
+client.shop.recommend("cart", item_ids=["sku-1", "sku-9"])  # what goes with a cart
+client.shop.recommend(
+    "after_purchase", item_ids=["sku-1"], user_id=uid
+)  # the order confirmation
+client.shop.sections(user_id=uid)  # titled shelves: "Linen sofas", ...
+client.shop.item("sku-123").keywords  # an item with its search terms
+client.shop.visual("chair.jpg")  # items that look like a picture
 ```
 
 An item is a `ShopItem`: `id`, `name`, `brand`, `image`, `price`, `currency` and `url` (its page, from the catalog or the tracking script). No shelf shows what the user already viewed or ordered, or the same item twice. `only` keeps any call to categories, brands or a price range.
@@ -260,6 +268,7 @@ import asyncio
 
 from behaviorgpt import AsyncUnboxAIClient, Search
 
+
 async def main():
     async with AsyncUnboxAIClient(market="us") as client:
         shoes, gloves = await asyncio.gather(
@@ -267,6 +276,7 @@ async def main():
             client.complete([Search("gloves")], limit=5),
         )
         print(shoes.names, gloves.names)
+
 
 asyncio.run(main())
 ```
