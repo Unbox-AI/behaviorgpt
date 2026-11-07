@@ -48,7 +48,7 @@ for item in res.items:
 ```
 
 - An item id is unique only within its catalog, so every item of a response says which catalog it is in, `item.catalog_id`. Single-catalog responses fill it in too.
-- An item in a history is in the first catalog of `catalog_ids` unless it names another: `View("sku-1", catalog_id="retail_catalog")`. An `Item` from a response knows its catalog, so `View(item)` and `Order([item])` need nothing more. An order can mix items of several catalogs.
+- An item in a history is in the first catalog of `catalog_ids` unless it names another: `View("sku-1", catalog_id="retail_catalog")`. An `Item` from a response knows its catalog, so `View(item)` and `Order([item])` need nothing more. An order can mix items of several catalogs. An `ExternalItem`, an item in none of them given by its name and picture, can be in a history too ([items outside your catalogs](../README.md#items-outside-your-catalogs)).
 - In `filters`, `catalog_id` is the item's catalog: `{"catalog_id": "retail_catalog"}` keeps only its items, and `{"$not": {"catalog_id": job.catalog_id}}` leaves yours out.
 - `similar_items(item, catalog_ids=both)` finds the items most like `item` in all of them. The item is in its own catalog if it is an `Item`, else in `catalog_id`, else in the first.
 - `sections` weighs each catalog by its number of items when it groups them, so a small catalog does not crowd out a large one.

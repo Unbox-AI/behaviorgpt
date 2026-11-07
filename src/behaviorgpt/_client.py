@@ -7,7 +7,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Callable, Iterable, Literal, Optional, Sequence, cast
+from typing import Any, Callable, Iterable, Literal, Optional, Sequence, Union, cast
 from uuid import uuid4
 
 import httpx
@@ -49,7 +49,7 @@ from behaviorgpt.types import (
     UserHistoryInput,
     View,
 )
-from behaviorgpt.types.events import ItemRef
+from behaviorgpt.types.events import ExternalItem, ItemRef
 from behaviorgpt.types.http import RecommendationType
 from behaviorgpt.types.user import User
 
@@ -163,13 +163,14 @@ class _BaseClient:
         item: ItemRef,
         catalog_id: Optional[str],
         catalog_ids: Optional[Sequence[str]],
-    ) -> tuple[_Target, str, str]:
+    ) -> tuple[_Target, Union[str, ExternalItem], str]:
         """The catalogs a similar-items request reads, and the id and catalog
         of its item. The item's catalog is `catalog_id`, else the `Item`'s own;
-        over `catalog_ids` it must be one of them, by default the first."""
-        item_id = item if isinstance(item, str) else item.id
+        over `catalog_ids` it must be one of them, by default the first. An
+        `ExternalItem` is in none and is sent as it is."""
+        item_id = item if isinstance(item, (str, ExternalItem)) else item.id
         item_catalog = catalog_id or (
-            None if isinstance(item, str) else item.catalog_id
+            None if isinstance(item, (str, ExternalItem)) else item.catalog_id
         )
         if catalog_ids is None:
             target = self._target(item_catalog, None)
@@ -356,7 +357,9 @@ class _BaseClient:
         def _process_session_events(
             session_events: Sequence[UserEvent], session_id: str, session_offset: int
         ):
-            cart_state: dict[tuple[Optional[str], str], int] = defaultdict(int)
+            cart_state: dict[tuple[Optional[str], Union[str, ExternalItem]], int] = (
+                defaultdict(int)
+            )
             current_cart_id = str(uuid4())
 
             for i, ev in enumerate(session_events):
@@ -500,6 +503,11 @@ class UnboxAIClient(_BaseClient):
         catalog_id=...)`, or are `Item`s of an earlier response, which know
         theirs. In `filters`, `catalog_id` is the item's catalog, e.g.
         `{"catalog_id": "retail_catalog"}`.
+
+        An item in none of the catalogs goes in the history as an
+        `ExternalItem`, by its name and picture: `View(ExternalItem("Linen
+        shirt", image="shirt.jpg"))`. It is read as a catalog item with that
+        row would be, and is never in the results.
 
         `user` says who the shopper is, `User(gender="female", age=34)`, and
         where, `User(market="SE", timezone="Europe/Stockholm")`: BehaviorGPT
@@ -790,8 +798,9 @@ class UnboxAIClient(_BaseClient):
         catalog_ids: Optional[Sequence[str]] = None,
         filters: Optional[dict[str, Any]] = None,
     ) -> UnboxAIResponse:
-        """The items most like `item_id`, an item id or an `Item` of a
-        response, most similar first.
+        """The items most like `item_id`, an item id, an `Item` of a response
+        or an `ExternalItem` (an item in no catalog, e.g. a photo: a search by
+        picture), most similar first.
 
         `catalog_id` is the catalog the item is in; for an `Item`, its own.
         `catalog_ids` looks for similar items in several catalogs, the item's

@@ -30,7 +30,7 @@ from typing import TYPE_CHECKING, Any, Callable, Optional, Sequence, Union
 import httpx
 
 from behaviorgpt.resources._shared import handle_response
-from behaviorgpt.types.events import Order, Search, View
+from behaviorgpt.types.events import ExternalItem, Order, Search, View
 from behaviorgpt.types.shop import (
     Only,
     PictureKind,
@@ -70,6 +70,12 @@ def shop_http_options(api_key: str, portal_url: str) -> dict[str, Any]:
 
 
 def _event(event: Union[Search, View, Order]) -> dict:
+    items = (event.items or ()) if isinstance(event, Order) else [event]
+    if any(isinstance(getattr(i, "item", None), ExternalItem) for i in items):
+        raise TypeError(
+            "the shop's history takes catalog items only; for a picture, use "
+            "shop.visual()"
+        )
     if isinstance(event, Search):
         return {"type": "search", "query": event.query}
     if isinstance(event, View):

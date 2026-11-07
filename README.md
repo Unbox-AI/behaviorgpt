@@ -79,6 +79,23 @@ client.complete([View(shoe)], predict="purchase")  # bought together
 client.complete([View(shoe), Order([shoe])])       # what they want after buying it
 ```
 
+### Items outside your catalogs
+
+An item doesn't have to be in a catalog to be in a history. Where an item id goes, an `ExternalItem` gives the item by what it is: its name, with its brand and categories as a catalog row has them, and its picture. It needs a name or a picture. BehaviorGPT reads it the way it reads a catalog item with that row, so a history can hold what the person saw on another site, or a photo they took.
+
+```python
+from behaviorgpt import ExternalItem
+
+shirt = ExternalItem("Linen shirt", brand="Acme", categories="Clothing, Shirts")
+photo = ExternalItem(image="photo.jpg")  # a path, bytes, a data: URL or an https link
+
+client.complete([View(shirt), Search("trousers")])  # trousers that go with that shirt
+client.complete([View(photo)])  # what they look at after this picture
+client.similar_items(photo)  # the catalog items most like the picture
+```
+
+A picture is sent with the request, at most 1024 pixels a side; a link must be https and public, and is downloaded when the item is first read. If the picture can't be had, the item is read by its name alone, and an item with neither is left out of the history (`similar_items` refuses it). Nothing is stored, and an `ExternalItem` is never in the results. A history that names one goes with a request (`complete`, `sections`, `similar_items`): `events.track` and the shop's calls take catalog items only.
+
 ## Who the user is
 
 Besides what the person did, BehaviorGPT reads who they are and when they act. Everything here is optional: what you leave out is unknown, and the model works without it.
@@ -163,7 +180,7 @@ The calls go to the portal (`https://portal.unboxai.com/api/v1/shop/`) with your
 
 ## Your own catalog
 
-The model can only return items it knows about. Out of the box the client uses `retail_catalog`, a sample retail catalog. To use the model on your own data, upload your catalog as a parquet file. A catalog doesn't have to be products for sale: artworks, articles, listings or anything else people browse and pick from work the same way.
+The model can only return items it knows about (a history can still hold [items outside your catalogs](#items-outside-your-catalogs)). Out of the box the client uses `retail_catalog`, a sample retail catalog. To use the model on your own data, upload your catalog as a parquet file. A catalog doesn't have to be products for sale: artworks, articles, listings or anything else people browse and pick from work the same way.
 
 [`docs/catalog-format.md`](https://github.com/Unbox-AI/behaviorgpt/blob/main/docs/catalog-format.md) lists the columns the file needs. A CSV with those column names converts to parquet with `catalog_from_csv`; [`examples/sample_catalog.csv`](https://github.com/Unbox-AI/behaviorgpt/blob/main/examples/sample_catalog.csv) shows what each column holds.
 

@@ -13,6 +13,7 @@ from behaviorgpt.resources.catalogs import (
 from behaviorgpt.types.events import (
     AddToCart,
     CartItem,
+    ExternalItem,
     Order,
     RemoveFromCart,
     Search,
@@ -35,6 +36,7 @@ __all__ = [
     "RemoveFromCart",
     "Order",
     "CartItem",
+    "ExternalItem",
     "User",
     "Only",
     "ShopItem",

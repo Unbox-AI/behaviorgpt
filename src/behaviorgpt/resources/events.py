@@ -6,6 +6,7 @@ import httpx
 
 from behaviorgpt.resources._shared import handle_response
 from behaviorgpt.types import Domains, Order, UserEvent
+from behaviorgpt.types.events import ExternalItem
 from behaviorgpt.types.http import RecordedCall, TrackedEvent
 from behaviorgpt.types.user import User
 
@@ -34,6 +35,17 @@ def _event_catalog(event: UserEvent) -> Optional[str]:
     return getattr(event, "catalog_id", None)
 
 
+def _refuse_external_items(event: UserEvent) -> None:
+    """Tracked events are stored, and an item in no catalog is not: it is read
+    only in a history sent with a request."""
+    items = (event.items or ()) if isinstance(event, Order) else [event]
+    if any(isinstance(getattr(i, "item", None), ExternalItem) for i in items):
+        raise ValueError(
+            "track takes catalog items only: an ExternalItem goes in a history "
+            "sent with a request, e.g. client.complete([View(ExternalItem(...))])"
+        )
+
+
 def event_body(
     context: EventContext,
     user_id: str,
@@ -48,6 +60,7 @@ def event_body(
         timestamp = datetime.now(tz=UTC)
     elif timestamp.tzinfo is None:
         raise ValueError("timestamp must be timezone-aware")
+    _refuse_external_items(event)
 
     payload = event.model_dump(mode="json", exclude_none=True)
     if isinstance(event, Order):
