@@ -193,9 +193,12 @@ class _BaseClient:
         user_id: Optional[str] = None,
         record_call: Optional[bool] = None,
         call: Optional[str] = None,
+        timestamp: Optional[datetime] = None,
     ) -> tuple[bool, UnboxAIRequest, _Target]:
         """The request `complete` sends, whether it goes to search, and the
         catalogs it reads."""
+        if timestamp is not None and timestamp.tzinfo is None:
+            raise ValueError("timestamp must be timezone-aware")
         if predict not in ("view", "purchase"):
             raise ValueError(f"predict must be 'view' or 'purchase', not {predict!r}")
         target = self._target(catalog_id, catalog_ids)
@@ -203,7 +206,9 @@ class _BaseClient:
         domains = user.domains(self.domains.market) if user else self.domains
         timezone = (user.timezone if user else None) or self.timezone
 
-        history_events = self.__from_sequence(target, history, domains, timezone)
+        history_events = self.__from_sequence(
+            target, history, domains, timezone, timestamp
+        )
         last_event = self._get_last_event(history)
         is_search = isinstance(last_event, Search)
         if user_id is not None and history_events[: -1 if is_search else None]:
@@ -232,6 +237,7 @@ class _BaseClient:
                 user_id=user_id,
                 record_call=record_call,
                 call=call,
+                timestamp=timestamp,
             )
             return True, req, target
 
@@ -250,6 +256,7 @@ class _BaseClient:
             user_id=user_id,
             record_call=record_call,
             call=call,
+            timestamp=timestamp,
         )
         return False, req, target
 
@@ -335,7 +342,11 @@ class _BaseClient:
         context: UserHistoryInput,
         domains: Domains,
         timezone: str,
+        at: Optional[datetime] = None,
     ) -> list[SessionEvent]:
+        """The history as the API's events. Events with their own `timestamp`
+        keep it; a history without any is stamped to end just before `at`, the
+        request's time (now by default)."""
         events: list[SessionEvent] = []
 
         if not context:
@@ -346,12 +357,26 @@ class _BaseClient:
             if isinstance(context[0], (list, tuple))
             else [cast(Sequence[UserEvent], context)]
         )
-        # Events are 1 ms apart, sessions `gap_ms` apart, and the whole history ends
-        # at least a second before now: the API reads only the events before the
-        # request, by its own clock, so a history stamped from now on would lose
-        # its later sessions and the tail of a long one.
+        timed = [ev.timestamp is not None for s in sessions for ev in s]
+        if any(timed) and not all(timed):
+            raise ValueError("give every event of the history a timestamp, or none")
+        if all(timed):
+            stamps = [ev.timestamp for s in sessions for ev in s]
+            if any(b < a for a, b in zip(stamps, stamps[1:])):
+                raise ValueError(
+                    "the history's timestamps must be in order, oldest first"
+                )
+            if at is not None and stamps[-1] >= at:
+                raise ValueError("every event's timestamp must be before the request's")
+
+        # Without timestamps, events are 1 ms apart, sessions `gap_ms` apart, and the
+        # whole history ends at least a second before the request: the API reads
+        # only the events before the request, by its clock or its `timestamp`, so a
+        # history stamped from then on would lose its later sessions and the tail of
+        # a long one.
         gap_ms = max(len(s) for s in sessions) + 1000
-        start = datetime.now(tz=UTC) - timedelta(milliseconds=gap_ms * len(sessions))
+        end = at or datetime.now(tz=UTC)
+        start = end - timedelta(milliseconds=gap_ms * len(sessions))
 
         # Track cart state within a single session
         def _process_session_events(
@@ -381,7 +406,9 @@ class _BaseClient:
                     cart_state.clear()
                     current_cart_id = str(uuid4())
 
-                event_time = start + timedelta(milliseconds=session_offset * gap_ms + i)
+                event_time = ev.timestamp or start + timedelta(
+                    milliseconds=session_offset * gap_ms + i
+                )
 
                 for j, (catalog, event) in enumerate(_by_catalog(ev, target)):
                     events.append(
@@ -483,6 +510,7 @@ class UnboxAIClient(_BaseClient):
         predict: Predict = "view",
         user: Optional[User] = None,
         user_id: Optional[str] = None,
+        timestamp: Optional[datetime] = None,
     ) -> UnboxAIResponse:
         """Rank the items most likely to come after `history`.
 
@@ -514,6 +542,14 @@ class UnboxAIClient(_BaseClient):
         reads it with the history and the prediction. Left out, the gender and
         age are unknown and the market and time zone are the client's.
 
+        Each event can say when it happened, `View(item_id, timestamp=...)`, and
+        `timestamp` when the prediction is made, both timezone-aware: the model
+        reads the time of day, weekday and date of each, and the gaps between
+        them. Give every event a timestamp, oldest first, or none: a history
+        without them is read as happening just before `timestamp`, and
+        `timestamp` is now by default. Set both to rank for a moment in the
+        past, as when replaying a dataset.
+
         `user_id` reads the events the API has stored for that person, sent by
         your site's script (the cookie `unbox_uid`) or with `events.track`, as
         the history: pass no `history` with it, or only the `Search(...)` to
@@ -539,6 +575,7 @@ class UnboxAIClient(_BaseClient):
             user,
             user_id,
             record_call=_record_call(user_id, register),
+            timestamp=timestamp,
         )
         endpoint = self.search if is_search else self.recommendations
         response = endpoint.create(payload=req, headers=target.headers)
@@ -958,6 +995,7 @@ class AsyncUnboxAIClient(_BaseClient):
         predict: Predict = "view",
         user: Optional[User] = None,
         user_id: Optional[str] = None,
+        timestamp: Optional[datetime] = None,
     ) -> UnboxAIResponse:
         """Rank the items most likely to come after `history`; see
         `UnboxAIClient.complete`."""
@@ -975,6 +1013,7 @@ class AsyncUnboxAIClient(_BaseClient):
             user,
             user_id,
             record_call=_record_call(user_id, register),
+            timestamp=timestamp,
         )
         endpoint = self.search if is_search else self.recommendations
         response = await endpoint.create(payload=req, headers=target.headers)
