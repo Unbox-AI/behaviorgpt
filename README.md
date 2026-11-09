@@ -119,6 +119,16 @@ res = client.complete([View("paB08NYK61PJ")], user=person)
 
 `user=` works with `complete` and `sections`, on the async client too, and applies to the prediction and to every event of the history. Set the time zone: the default is UTC, and the hour and weekday the model reads are then UTC's, not the person's. Values outside the lists above raise an error rather than being sent. A raw age never leaves your server, only its group, and postal codes are not sent.
 
+Events are read as happening just before the call, unless they say when they happened. To rank for a moment in the past, as when replaying a dataset, give every event its `timestamp` and the call its own, all timezone-aware:
+
+```python
+from datetime import UTC, datetime
+
+at = datetime(2022, 3, 1, 20, tzinfo=UTC)
+history = [View("i202002", timestamp=at.replace(hour=19)), View("i68199", timestamp=at.replace(minute=5, hour=19))]
+res = client.complete(history, timestamp=at)
+```
+
 If your site already sends events (the portal's browser script, or `POST /events`), pass the person's id instead of a history: `client.complete(user_id=uid, user=person)`. The API ranks on the events it has stored for that id, so pass no history, or only the `Search(...)` to run: `client.complete([Search("sofa")], user_id=uid)`. With the browser script, the id is in the `unbox_uid` cookie.
 
 A call with a `user_id` is recorded for that person, so it shows in their events in the portal. Its search is stored as their event, marked `via="search"` (or `"sections"`) so it isn't mistaken for one your site sent; the same search sent by your site within a minute is kept once. The call itself, what it was for and the items it showed, is kept apart and never becomes part of their history: `client.events.calls(user_id=uid)` lists them. Pass `register_event=False` to record nothing, for example for a ranking your own staff look at.

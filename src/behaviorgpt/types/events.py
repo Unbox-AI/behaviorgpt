@@ -9,6 +9,7 @@ from pydantic import (
     ConfigDict,
     Field,
     SerializerFunctionWrapHandler,
+    field_validator,
     model_serializer,
     model_validator,
 )
@@ -79,6 +80,20 @@ def _picture(image: Union[str, bytes, Path]) -> str:
 ItemRef = Union[str, "Item", ExternalItem]
 
 
+class _Timed(BaseModel):
+    """An event's optional `timestamp`: when it happened, timezone-aware. Not
+    sent as part of the event: it becomes the time the API reads it at."""
+
+    timestamp: Optional[datetime] = Field(default=None, exclude=True)
+
+    @field_validator("timestamp")
+    @classmethod
+    def _aware(cls, value: Optional[datetime]) -> Optional[datetime]:
+        if value is not None and value.tzinfo is None:
+            raise ValueError("timestamp must be timezone-aware")
+        return value
+
+
 class _ItemEvent(BaseModel):
     # the API calls the item "product"
     model_config = ConfigDict(serialize_by_alias=True)
@@ -138,7 +153,7 @@ class CartItem(_ItemEvent):
         super().__init__(item, **data)
 
 
-class Search(BaseModel):
+class Search(_Timed):
     type: Literal["search"] = "search"
     query: str
 
@@ -148,11 +163,11 @@ class Search(BaseModel):
         super().__init__(**data)
 
 
-class View(_ItemEvent):
+class View(_ItemEvent, _Timed):
     type: Literal["viewItem"] = "viewItem"
 
 
-class AddToCart(_ItemEvent):
+class AddToCart(_ItemEvent, _Timed):
     type: Literal["addToCart"] = "addToCart"
 
     def __init__(self, item: Optional[ItemRef] = None, **data):
@@ -166,7 +181,7 @@ class AddToCart(_ItemEvent):
         super().__init__(item, **data)
 
 
-class RemoveFromCart(_ItemEvent):
+class RemoveFromCart(_ItemEvent, _Timed):
     type: Literal["removeFromCart"] = "removeFromCart"
 
     def __init__(self, item: Optional[ItemRef] = None, **data):
@@ -182,7 +197,7 @@ class RemoveFromCart(_ItemEvent):
 OrderItem = Union[ItemRef, CartItem, Tuple[ItemRef, int]]
 
 
-class Order(BaseModel):
+class Order(_Timed):
     """A finished purchase of `items`: item ids, `Item`s, `(item, quantity)`
     pairs or `CartItem`s. The model reads only which items were bought;
     quantities and `cart_id` do not change results.

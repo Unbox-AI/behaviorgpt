@@ -3,6 +3,7 @@ client, awaited, and polling that leaves the event loop free."""
 
 import asyncio
 import json
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
@@ -107,6 +108,17 @@ def test_predict_purchase_asks_for_buy_next():
     asyncio.run(client.complete([View("sku-1")], predict="purchase"))
     assert requests[0].url.path == "/v1/vector/recommendations"
     assert json.loads(requests[0].content)["type"] == {"name": "buy_next"}
+
+
+def test_events_and_the_request_keep_their_timestamps():
+    client, requests = mock_client()
+    at = datetime(2022, 3, 1, 8, tzinfo=UTC)
+    asyncio.run(
+        client.complete([View("sku-1", timestamp=at)], timestamp=at + timedelta(1))
+    )
+    body = json.loads(requests[0].content)
+    assert body["history"][0]["timestamp"].startswith("2022-03-01T08:00:00")
+    assert body["timestamp"].startswith("2022-03-02T08:00:00")
 
 
 def test_predict_view_leaves_the_type_to_the_server():
