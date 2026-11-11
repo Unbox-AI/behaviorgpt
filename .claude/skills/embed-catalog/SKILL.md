@@ -50,10 +50,10 @@ Source-specific traps:
 
 Ask whether the user has order or sales history, or for other catalogs any interaction counts such as views, plays or saves. Without it, leave `sales_since`, `timestamp`, `frequency` null and say that every item will rank as equally popular.
 
-With order lines (item id + date + quantity), compute per item, relative to today:
+With order lines (item id + date + quantity), compute per item:
 
-- `sales_since`: 12 int64 values. Units sold in the trailing 30, 60, 90, ..., 330 days (11 cumulative windows, so values never decrease), then the all-time total.
 - `timestamp`: epoch seconds of the first sale.
+- `sales_since`: 12 int64 values. Units sold in the item's first 30, 60, 90, ..., 330 days, counted from its first sale (11 cumulative windows, so values never decrease), then the all-time total. Raw counts: don't scale or normalize them. For an item first sold on day 0, the first value counts its sales on days 0 to 30.
 - `frequency`: total interactions. Use the all-time total if nothing better exists.
 
 ### 4. Enforce the limits
