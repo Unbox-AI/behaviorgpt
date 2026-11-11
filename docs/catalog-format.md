@@ -37,7 +37,7 @@ job = client.embed(
 | `image_url` | string | yes | Full `https://` URL, fetchable without a login or browser. Fetched and encoded into the embedding. Null or unreachable means text-only embedding for that row, but if none of the first 500 fetched images is usable the job fails (see below). |
 | `event_type` | string | no | Set every row to `product`, whatever the catalog holds. |
 | `group` | string | no | Set every row to `product`, whatever the catalog holds. |
-| `sales_since` | list of int64 | yes | 12 integers: sales in the trailing 30, 60, ..., 330 days, then the all-time total. Popularity signal. Null is treated as all zeros. |
+| `sales_since` | list of int64 | yes | 12 integers: the item's sales in its first 30, 60, ..., 330 days, counted from `timestamp` (its first sale), then the all-time total. Raw counts, not scaled. The model reads the one for the item's age when embedded, so an item 3 months old reads its sales in its first 90 days. Popularity signal. Null is treated as all zeros. |
 | `timestamp` | int64 | yes | Epoch seconds of the first sale. Recency signal. |
 | `frequency` | int64 | yes | Total interactions with the item. Popularity signal. |
 | `market` | string | yes | Market code, e.g. `SE`. |
