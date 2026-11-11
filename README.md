@@ -145,6 +145,14 @@ client.events.list(stream="api", types=["order"])  # what your server sent; a st
 
 An event's catalog is `catalog_id=`, else the one an `Item` of a response names, else the client's default. Pass `timestamp=` whenever you send an event after it happened, so the history stays in order.
 
+### Getting good predictions
+
+What mattered most when we replayed datasets the model was never trained on:
+
+- **Real times.** Give events their `timestamp`, and a call made for another moment its own. The model reads how long ago each step was; a history read as happening just now ranked far worse.
+- **Item age and sales in the catalog.** Set `timestamp` (first seen) and `sales_since` on every item, as raw counts: the model reads their order of magnitude, so scaled or normalized counts did worse than the real ones.
+- **When replaying the past**, use only what was known then: sales counted before the moment, `reference_time=` on `embed`, and only items that already existed, `filters={"timestamp": {"$lte": int(at.timestamp())}}`. Otherwise items from the future look new and crowd the top.
+
 ## Search suggestions
 
 `autocomplete` suggests searches as the person types. BehaviorGPT ranks the items they most likely want given their history and the text so far, and each top item offers the first of its keywords that continues the text, allowing for a typo. So the same letters give different suggestions to different people:
