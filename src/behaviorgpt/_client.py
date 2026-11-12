@@ -202,14 +202,20 @@ class _BaseClient:
         domains = user.domains(self.domains.market) if user else self.domains
         timezone = (user.timezone if user else None) or self.timezone
 
-        history_events = self.__from_sequence(target, history, domains, timezone)
+        # The API keeps only the history events stamped before the request's
+        # timestamp. Both come from this one reading of the local clock, so the
+        # comparison holds even when this computer's clock is off from the API's.
+        now = datetime.now(tz=UTC)
+        history_events = self.__from_sequence(target, history, domains, timezone, now)
         last_event = self._get_last_event(history)
         is_search = isinstance(last_event, Search)
-        if user_id is not None and history_events[: -1 if is_search else None]:
+        sent_events = history_events[: -1 if is_search else None]
+        if user_id is not None and sent_events:
             raise ValueError(
                 "with user_id, BehaviorGPT reads the history it has stored for "
                 "them: pass no history, or only the Search(...) to run for them"
             )
+        timestamp = now if sent_events else None
 
         if isinstance(last_event, Search):
             if predict == "purchase":
@@ -219,12 +225,13 @@ class _BaseClient:
                 )
             req = self.requester.make(
                 query=last_event.query,
-                history=history_events[:-1],
+                history=sent_events,
                 catalog_id=target.primary,
                 limit=limit,
                 offset=offset,
                 filters=filters,
                 register_event=register_event,
+                timestamp=timestamp,
                 max_trailing_searches=max_trailing_searches,
                 domains=domains,
                 timezone=timezone,
@@ -241,6 +248,7 @@ class _BaseClient:
             offset=offset,
             filters=filters,
             register_event=register_event,
+            timestamp=timestamp,
             recommendation_type=(
                 RecommendationType(name="buy_next") if predict == "purchase" else None
             ),
@@ -334,6 +342,7 @@ class _BaseClient:
         context: UserHistoryInput,
         domains: Domains,
         timezone: str,
+        now: datetime,
     ) -> list[SessionEvent]:
         events: list[SessionEvent] = []
 
@@ -346,11 +355,11 @@ class _BaseClient:
             else [cast(Sequence[UserEvent], context)]
         )
         # Events are 1 ms apart, sessions `gap_ms` apart, and the whole history ends
-        # at least a second before now: the API reads only the events before the
-        # request, by its own clock, so a history stamped from now on would lose
+        # at least a second before `now`, the request's timestamp: the API reads
+        # only the events before it, so a history stamped from `now` on would lose
         # its later sessions and the tail of a long one.
         gap_ms = max(len(s) for s in sessions) + 1000
-        start = datetime.now(tz=UTC) - timedelta(milliseconds=gap_ms * len(sessions))
+        start = now - timedelta(milliseconds=gap_ms * len(sessions))
 
         # Track cart state within a single session
         def _process_session_events(
