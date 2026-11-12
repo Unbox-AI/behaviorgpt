@@ -36,9 +36,11 @@ from behaviorgpt import Search, UnboxAIClient
 
 client = UnboxAIClient(market="us")  # reads UNBOXAI_API_KEY
 
+
 def selection(params) -> list[str]:
     ids = [params.get("catalog_id", ""), *params.get("compare", "").split(",")]
     return [i for i in ids if i]
+
 
 res = client.complete([Search("rain jacket")], catalog_ids=selection(params), limit=10)
 for item in res.items:

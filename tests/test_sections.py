@@ -215,6 +215,7 @@ def test_the_async_client_sends_the_same_request():
 
     sent = [json.loads(r.content) for r in (sync_requests[0], async_requests[0])]
     for body in sent:
+        body.pop("timestamp")
         for event in body["history"]:
             event.pop("timestamp"), event.pop("session_id")
     assert sent[0] == sent[1]
